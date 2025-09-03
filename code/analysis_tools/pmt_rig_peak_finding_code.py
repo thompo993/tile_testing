@@ -195,8 +195,8 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False, custom_
 # Example usage
 # ------------------------
 if __name__ == "__main__":
-    folder_path = r"\\isis\shares\Detectors\Ben Thompson 2025-2026\Ben Thompson 2025-2025 Shared\Labs\Scintillating Tile Tests\pmt_rig_250825\tile_21_repeatablility_test_250901"
-    custom_save_path = r'tile_testing\Figures\peak_finding_plots\tile21_repeatablility_tests_250901\process_batch_2'
+    folder_path = r"\\isis\shares\Detectors\Ben Thompson 2025-2026\Ben Thompson 2025-2025 Shared\Labs\Scintillating Tile Tests\pmt_rig_250825\bulk_tile_testing_batch_6_250903"
+    custom_save_path = r'Figures\bulk_tile_testing_batch_6_250903'
     
     # Process the folder
     process_phs_folder(folder_path, save_results=True, save_plots=True, custom_save_path=custom_save_path)

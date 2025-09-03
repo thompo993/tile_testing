@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 # Configuration - Edit these parameters as needed
-CSV_FILE_PATH = r"\\isis\shares\Detectors\Ben Thompson 2025-2026\Ben Thompson 2025-2025 Shared\Labs\Scintillating Tile Tests\pmt_rig_250825\spreadsheets\old_data_for250821_hist_data_250901.csv" 
+CSV_FILE_PATH = r"\\isis\shares\Detectors\Ben Thompson 2025-2026\Ben Thompson 2025-2025 Shared\Labs\Scintillating Tile Tests\pmt_rig_250825\spreadsheets\comparison_histogram__between_batches_csv_250903.csv" 
 BIN_NUMBER = 10  # Change this to adjust the number of bins
 ALPHA = 0.7  # Transparency for overlapping histograms (0-1)
 
@@ -51,10 +51,10 @@ def load_and_plot_histograms(csv_path, bins, alpha=0.7):
         
         # Print basic statistics
         print(f"\nData Summary:")
-        print(f"Original data points: {len(og_data)}")
-        print(f"New data points: {len(new_data)}")
-        print(f"Original range: {og_data.min():.2f} to {og_data.max():.2f}")
-        print(f"New range: {new_data.min():.2f} to {new_data.max():.2f}")
+        print(f"New Batch of Tiles (Made 03/09/25): {len(og_data)}")
+        print(f"Original production Tiles (Made 07/08/25): {len(new_data)}")
+        print(f"New Batch of Tiles (Made 03/09/25) range: {og_data.min():.2f} to {og_data.max():.2f}")
+        print(f"Original production Tiles (Made 07/08/25): {new_data.min():.2f} to {new_data.max():.2f}")
         
         # Determine the range for both histograms to ensure they're comparable
         combined_min = min(og_data.min(), new_data.min())
@@ -65,9 +65,9 @@ def load_and_plot_histograms(csv_path, bins, alpha=0.7):
         plt.figure(figsize=(12, 8))
         
         # Plot layered histograms
-        plt.hist(og_data, bins=bin_edges, alpha=alpha, label='Peak Locations (Original)', 
-                color='blue', edgecolor='black', linewidth=0.5)
-        plt.hist(new_data, bins=bin_edges, alpha=alpha, label='Peak Locations (New)', 
+        plt.hist(og_data, bins=bin_edges, alpha=alpha, label='Peak Locations (03/09/25)', 
+                color='green', edgecolor='black', linewidth=0.5)
+        plt.hist(new_data, bins=bin_edges, alpha=alpha, label='Peak Locations (07/08/25)', 
                 color='red', edgecolor='black', linewidth=0.5)
         
         # Customize the plot
@@ -78,8 +78,8 @@ def load_and_plot_histograms(csv_path, bins, alpha=0.7):
         plt.grid(True, alpha=0.3)
         
         # Add some statistics to the plot
-        plt.figtext(0.02, 0.02, f'Original: μ={og_data.mean():.5f}, σ={og_data.std():.5f}\n'
-                                 f'New: μ={new_data.mean():.5f}, σ={new_data.std():.5f}',
+        plt.figtext(0.02, 0.02, f'07/08/25: μ={og_data.mean():.5f}, σ={og_data.std():.5f}\n'
+                                 f'03/09/25: μ={new_data.mean():.5f}, σ={new_data.std():.5f}',
                    fontsize=10, bbox=dict(boxstyle="round,pad=0.3", facecolor="lightgray"))
         
         # Adjust layout and display
