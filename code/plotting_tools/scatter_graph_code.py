@@ -49,8 +49,8 @@ def plot_peak_scatter(file_path):
     scatter = plt.scatter(range(len(df)), df[peak_col], c=colors, alpha=0.7, s=50)
     
     # Customize the plot
-    plt.xlabel("Sample Index", fontsize=12)
-    plt.ylabel(f"{peak_col}", fontsize=12)
+    plt.xlabel("Tile ID", fontsize=12)
+    plt.ylabel('Peak Location', fontsize=12)
     plt.title("Scatter Plot: Peak Values by Sample", fontsize=14)
     plt.grid(True, linestyle="--", alpha=0.3)
     
@@ -91,14 +91,11 @@ def plot_peak_scatter(file_path):
         other_mean = df[~contains_og][peak_col].mean()
         print(f"Average peak value for other samples: {other_mean:.4f}")
 
-# -----------------------------
-# Example usage:
-# -----------------------------
+
 if __name__ == "__main__":
     # Replace with your CSV file path
-    file_path = r"\\isis\shares\Detectors\Ben Thompson 2025-2026\Ben Thompson 2025-2025 Shared\Labs\Scintillating Tile Tests\pmt_rig_250825\spreadsheets\scatter_plot__cleaned_250902.csv"
+    file_path = r"\\isis\shares\Detectors\Ben Thompson 2025-2026\Ben Thompson 2025-2025 Shared\Labs\Scintillating Tile Tests\pmt_rig_250825\spreadsheets\Scatter Plots\scatter_plot__cleaned_single_tile21_250903.csv"
     
-    # Uncomment the line below and update the path to run
     plot_peak_scatter(file_path)
     
     print("To use this script:")

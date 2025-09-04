@@ -3,8 +3,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 # Configuration - Edit these parameters as needed
-CSV_FILE_PATH = r"\\isis\shares\Detectors\Ben Thompson 2025-2026\Ben Thompson 2025-2025 Shared\Labs\Scintillating Tile Tests\pmt_rig_250825\spreadsheets\histogram_csv_250903.csv" 
-BIN_NUMBER = 10  # Change this to adjust the number of bins
+CSV_FILE_PATH = r"\\isis\shares\Detectors\Ben Thompson 2025-2026\Ben Thompson 2025-2025 Shared\Labs\Scintillating Tile Tests\pmt_rig_250825\spreadsheets\Histograms\high_value_biased_sheet_250904.csv" 
+BIN_NUMBER = 24 # Change this to adjust the number of bins
 ALPHA = 0.7  # Transparency for overlapping histograms (0-1)
 
 def load_and_plot_histograms(csv_path, bins, alpha=0.7):
