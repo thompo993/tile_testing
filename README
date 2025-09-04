@@ -1,0 +1,42 @@
+TILE TESTING 
+
+ANALYSIS TOOLS:
+  - calibration_tool.py: Used when using the SiPM setup and it is required to be calibrated, it takes a folder for your calbration, using the pulsed laser in the low light conditons. It finds out the voltage output per photon using the gap between peaks of the SiPM. 
+                         To get the output, the voltages of each SiPM must be varied simultaneously (such that they are at the same voltage) with the PHS of each channel being saved. This then allows a comparison of bias voltage and volts per photon, hence allowing
+                         the SiPM's to be gain matched. 
+  
+- pmt_rig_peak_finding_code.py: This tool finds the second peak on a PHS from a distribution. It chooses the second such that the peak is not fitted to the noise. provide a folder that is full of the PHS you want to test. Note this only works for a single PHS, not a 
+                                a 2 channel setup (as of 04/09/25) 
+
+ PLOTTING TOOLS:
+  - histogram_v1.py: Used to plot a histogram of the tiles photon peak. for this to work provide a csv with two columns in the following  format: "peak location new,	peak locations og". peak locations new shows the current tile peaks for all tiles, and og is the 
+    tile 21 benchmark used for quality contr                                                                                                       0.060937,	          0.071875
+                                                                                                                                                   0.060937,	
+                                                                                                                                                   0.059375,	
+                                                                                                                                                   etc,	
+
+ - histogram_simple_v1.py: trivial code used for measuing the repeatablility of a certain tile
+
+ - nb_batch_compare_hist: This code is for testing the current database of tiles, against tile 21, against the "nb", being the new batch of tiles. The required input is a csv with the following format: "peak location new,	peak locations og,	nb peaks"
+                                                                                                                                                                                                          0.060937,	          0.071875,	          0.060937
+                                                                                                                                                                                                          0.060937,		        0.051562,
+                                                                                                                                                                                                          0.059375,		        0.059375,
+                                                                                                                                                                                                          0.067187,		        0.0625,
+                                                                                                                                                                                                          0.075,		g                                                                                                                                                                                                          0.067187,		
+                                                                                                                                                                                                          0.075,		
+
+- nb_batch_compare_scatter.py: this code is for comparing the tile 21og (benchmark tile) to the whole database, to the newest batch (nb). insert a log of the tile ID in one column, and the peak in another: "peak location new	peak locations og	nb peaks: "Name	   peak location"
+  add the suffix to the name to asign which catagory on the scatter graph, no suffix, it will be placed in the majority of the tiles, if suffix "og" is used, it will be labelled blue, and "nb" is used to assign the new batch.                                                                                                                                                                                                                                                          id21og   0.071875
+                                                                                                                                                                                                                                                               id3003	  0.060937
+                                                                                                                                                                                                                                                               id3004  	0.060937
+                                                                                                                                                                                                                                                               id3005 	0.059375
+                                                                                                                                                                                                                                                               id3006 	0.067187
+                                                                                                                                                                                                                                                               id3007 	0.075
+- scatter_graph_code.py: this is a more basic version of the code above, only can take suffix "og". May be merged with the above code.                                                                                                                                                                                                                                                              id3008 	0.067187
+                                                                                                                                                                                                                                                               id3009 	0.075
+                                                                                                                                                                                                                                                              
+                                                                                                                                                                                                                                               
+                                                                                                                                                                                                                                                              
+
+                  
+
