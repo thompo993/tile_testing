@@ -91,7 +91,7 @@ def analyze_largest_peak(x, y, window=21, poly=3, prominence=0.05,
     plt.plot(x[peaks], y_smooth[peaks], "ro", label="Detected Peaks")
     plt.plot(x_fit, gaussian(x_fit, *popt), "g--", linewidth=2,
              label="Gaussian Fit (highest x peak)")
-    plt.axvline(peak_x, color="purple", linestyle="--", label=f"Peak ≈ {peak_x:.2f}")
+    plt.axvline(peak_x, color="purple", linestyle="--", label=f"Peak = {peak_x:.4f}")
     plt.xlabel("Channel / Energy")
     plt.ylabel("Counts")
     plt.title(f"Highest X Peak Detection: {file_name if file_name else ''}")
