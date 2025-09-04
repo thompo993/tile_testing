@@ -7,6 +7,7 @@ from pathlib import Path
 import os
 import glob
 import warnings
+from datetime import datetime
 warnings.filterwarnings("ignore")
 
 # ------------------------
@@ -101,8 +102,15 @@ def analyze_largest_peak(x, y, window=21, poly=3, prominence=0.05,
     if save_plot and save_path and file_name:
         # Ensure the save path exists
         os.makedirs(save_path, exist_ok=True)
-        plot_filename = os.path.splitext(file_name)[0] + "_peak_plot.png"
+        
+        # Generate timestamp in YYMMDD_HHMMSS format
+        timestamp = datetime.now().strftime("%y%m%d_%H%M%S")
+        
+        # Create filename with timestamp
+        base_name = os.path.splitext(file_name)[0]
+        plot_filename = f"{base_name}_{timestamp}_peak_plot.png"
         full_plot_path = os.path.join(save_path, plot_filename)
+        
         try:
             plt.savefig(full_plot_path, dpi=300, bbox_inches='tight')
             print(f"Plot saved to: {full_plot_path}")
@@ -176,9 +184,13 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False, custom_
             "Gaussian_Sigma": popt[2]
         })
 
-    # Save summary CSV in the save path
+    # Save summary CSV in the save path with timestamp
     if save_results and results:
-        csv_path = os.path.join(save_path, "PHS_Highest_X_Peak_Summary.csv")
+        # Generate timestamp for the CSV file as well
+        timestamp = datetime.now().strftime("%y%m%d_%H%M%S")
+        csv_filename = f"PHS_Highest_X_Peak_Summary_{timestamp}.csv"
+        csv_path = os.path.join(save_path, csv_filename)
+        
         try:
             pd.DataFrame(results).to_csv(csv_path, index=False)
             print(f"\nResults summary saved to: {csv_path}")
@@ -196,7 +208,7 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False, custom_
 # ------------------------
 if __name__ == "__main__":
     folder_path = r"\\isis\shares\Detectors\Ben Thompson 2025-2026\Ben Thompson 2025-2025 Shared\Labs\Scintillating Tile Tests\pmt_rig_250825\bulk_tile_testing\bulk_tile_testing_batch_7_250904"
-    custom_save_path = r'tile_testing\Figures\peak_finding_plots\tile21_repeatablility_tests_250901\process_batch_2'
+    custom_save_path = r"\\isis\Shares\Detectors\Ben Thompson 2025-2026\Ben Thompson 2025-2025 Shared\Labs\Scintillating Tile Tests\peak_finding_plots_log"
     
     # Process the folder
     process_phs_folder(folder_path, save_results=True, save_plots=True, custom_save_path=custom_save_path)
