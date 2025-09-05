@@ -92,7 +92,7 @@ def analyze_largest_peak(x, y, window=21, poly=3, prominence=0.05,
     plt.plot(x_fit, gaussian(x_fit, *popt), "g--", linewidth=2,
              label="Gaussian Fit (highest x peak)")
     plt.axvline(peak_x, color="purple", linestyle="--", label=f"Peak = {peak_x:.4f}")
-    plt.xlabel("Channel / Energy")
+    plt.xlabel("Voltage Output")
     plt.ylabel("Counts")
     plt.title(f"Highest X Peak Detection: {file_name if file_name else ''}")
     plt.legend()
@@ -207,7 +207,7 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False, custom_
 # Example usage
 # ------------------------
 if __name__ == "__main__":
-    folder_path = r"\\isis\shares\Detectors\Ben Thompson 2025-2026\Ben Thompson 2025-2025 Shared\Labs\Scintillating Tile Tests\pmt_rig_250825\bulk_tile_testing\bulk_tile_testing_batch_7_250904"
+    folder_path = r"\\isis\Shares\Detectors\Ben Thompson 2025-2026\Ben Thompson 2025-2025 Shared\Labs\Scintillating Tile Tests\pmt_rig_250825\bulk_tile_testing\used_in_spreadsheet_traces_250904"
     custom_save_path = r"\\isis\Shares\Detectors\Ben Thompson 2025-2026\Ben Thompson 2025-2025 Shared\Labs\Scintillating Tile Tests\peak_finding_plots_log"
     
     # Process the folder
