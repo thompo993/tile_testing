@@ -47,6 +47,34 @@ def read_set_file(data_file_path):
     return runtime, start_datetime
 
 # ------------------------
+# Parse runtime to seconds
+# ------------------------
+def parse_runtime_to_seconds(runtime_str):
+    """
+    Parse runtime string to seconds for normalization
+    Supports formats like 'HH:MM:SS' or just seconds as string
+    """
+    if runtime_str is None:
+        return None
+    
+    try:
+        # If it contains colons, assume HH:MM:SS format
+        if ':' in runtime_str:
+            parts = runtime_str.split(':')
+            if len(parts) == 3:
+                hours, minutes, seconds = map(float, parts)
+                return hours * 3600 + minutes * 60 + seconds
+            elif len(parts) == 2:
+                minutes, seconds = map(float, parts)
+                return minutes * 60 + seconds
+        else:
+            # Assume it's already in seconds
+            return float(runtime_str)
+    except (ValueError, TypeError):
+        print(f"Could not parse runtime: {runtime_str}")
+        return None
+
+# ------------------------
 # Load PHS data
 # ------------------------
 def load_phs_file(file_path):
@@ -80,11 +108,24 @@ def load_phs_file(file_path):
 # ------------------------
 def analyze_largest_peak(x, y, window=21, poly=3, prominence=0.05,
                          show_plot=True, save_plot=False, save_path=None, file_name=None,
-                         runtime=None, start_datetime=None):
+                         runtime=None, start_datetime=None, normalise=True):
     """
     Smooths data, finds peak with highest x-value, fits Gaussian, and optionally plots/saves results.
     """
-    # Smooth data
+    # Parse runtime for normalization
+    runtime_seconds = parse_runtime_to_seconds(runtime) if runtime else None
+    
+    # normalise data if requested and runtime is available
+    y_original = y.copy()
+    if normalise and runtime_seconds and runtime_seconds > 0:
+        y = y / runtime_seconds
+        y_label = "Counts/second"
+        normalization_note = f"normalised by runtime ({runtime}s)"
+    else:
+        y_label = "Counts"
+        normalization_note = "Raw counts (no normalization)" if not normalise else "Raw counts (runtime unavailable)"
+    
+    # Smooth data (using potentially normalised y)
     y_smooth = savgol_filter(y, window_length=window, polyorder=poly)
 
     # Find peaks on smoothed data
@@ -116,7 +157,14 @@ def analyze_largest_peak(x, y, window=21, poly=3, prominence=0.05,
 
     # Create the plot
     plt.figure(figsize=(12, 8))
-    plt.plot(x, y, label="Raw Spectrum", color="lightgray", alpha=0.7)
+    
+    # Plot original (potentially normalised) data
+    if normalise and runtime_seconds:
+        plt.plot(x, y_original, label="Raw Spectrum", color="lightgray", alpha=0.5, linewidth=1)
+        plt.plot(x, y, label="normalised Spectrum", color="lightblue", alpha=0.7, linewidth=1.5)
+    else:
+        plt.plot(x, y, label="Raw Spectrum", color="lightgray", alpha=0.7)
+    
     plt.plot(x, y_smooth, label="Smoothed Spectrum", color="blue", linewidth=2)
     plt.plot(x[peaks], y_smooth[peaks], "ro", markersize=8, label="Detected Peaks")
     plt.plot(x_fit, gaussian(x_fit, *popt), "g--", linewidth=3,
@@ -125,8 +173,8 @@ def analyze_largest_peak(x, y, window=21, poly=3, prominence=0.05,
     # Create info text for the plot
     info_text = f'Runtime: {runtime}\n'
     info_text += f'Start DateTime: {start_datetime}\n'
-    info_text += 'Integration Time (too be added)'
-    
+    info_text += f'{normalization_note}\n'
+    info_text += 'Integration Time (to be added)'
     
     plt.figtext(0.76, 0.71, info_text,
                 fontsize=10, bbox=dict(boxstyle="round,pad=0.5", facecolor="lightgray", alpha=0.8))
@@ -134,7 +182,7 @@ def analyze_largest_peak(x, y, window=21, poly=3, prominence=0.05,
     plt.axvline(peak_x, color="purple", linestyle="--", linewidth=2, 
                 label=f"Peak X = {peak_x:.4f}")
     plt.xlabel("Voltage Output", fontsize=12)
-    plt.ylabel("Counts", fontsize=12)
+    plt.ylabel(y_label, fontsize=12)
     plt.title(f"Highest X Peak Detection: {file_name if file_name else 'Unknown File'}", 
               fontsize=14, fontweight='bold')
     plt.legend(fontsize=10)
@@ -151,7 +199,8 @@ def analyze_largest_peak(x, y, window=21, poly=3, prominence=0.05,
         
         # Create filename with timestamp
         base_name = os.path.splitext(file_name)[0]
-        plot_filename = f"{base_name}_{timestamp}_peak_plot.png"
+        norm_suffix = "_normalised" if normalise and runtime_seconds else "_raw"
+        plot_filename = f"{base_name}_{timestamp}{norm_suffix}_peak_plot.png"
         full_plot_path = os.path.join(save_path, plot_filename)
         
         try:
@@ -181,14 +230,33 @@ def find_phs_files(folder_path):
 # ------------------------
 # Process all files in folder
 # ------------------------
-def process_phs_folder(folder_path, save_results=True, save_plots=False, custom_save_path=None):
+def process_phs_folder(folder_path, save_results=True, save_plots=False, 
+                       custom_save_path=None, normalise=True):
+    """
+    Process all PHS files in a folder.
+    
+    Parameters:
+    -----------
+    folder_path : str
+        Path to folder containing PHS data files
+    save_results : bool
+        Whether to save results CSV
+    save_plots : bool  
+        Whether to save individual plots
+    custom_save_path : str
+        Custom path for saving outputs
+    normalise : bool
+        Whether to normalise counts by runtime (default: True)
+    """
     files = find_phs_files(folder_path)
     if not files:
         print("No valid PHS data files found.")
         return
 
     results = []
-    print(f"Found {len(files)} files to analyze.\n")
+    print(f"Found {len(files)} files to analyze.")
+    print(f"Normalization: {'ON' if normalise else 'OFF'}")
+    print("")
 
     # Use custom save path if provided, else default to folder_path
     save_path = custom_save_path if custom_save_path else folder_path
@@ -216,14 +284,16 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False, custom_
             save_path=save_path,
             file_name=Path(file).name,
             runtime=runtime,
-            start_datetime=start_datetime
+            start_datetime=start_datetime,
+            normalise=normalise
         )
 
         if peak_x is None:
             print(f"No peaks found in {file}")
             continue
 
-        results.append({
+        # Store results with normalization info
+        result = {
             "File": Path(file).name,
             "Highest_X_Peak_X": peak_x,
             "Highest_X_Peak_Y": peak_y,
@@ -231,15 +301,21 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False, custom_
             "Gaussian_Mu": popt[1],
             "Gaussian_Sigma": popt[2],
             "Runtime": runtime,
-            "StartDateTime": start_datetime
-        })
-        print(f"Peak found at X = {peak_x:.5f}, Y = {peak_y:.2f}\n")
+            "StartDateTime": start_datetime,
+            "normalised": normalise and parse_runtime_to_seconds(runtime) is not None
+        }
+        results.append(result)
+        
+        # Print status with normalization info
+        norm_status = " (normalised)" if result["normalised"] else " (raw)"
+        print(f"Peak found at X = {peak_x:.5f}, Y = {peak_y:.2f}{norm_status}\n")
 
     # Save summary CSV in the save path with timestamp
     if save_results and results:
         # Generate timestamp for the CSV file as well
         timestamp = datetime.now().strftime("%y%m%d_%H%M%S")
-        csv_filename = f"PHS_Highest_X_Peak_Summary_{timestamp}.csv"
+        norm_suffix = "_normalised" if normalise else "_raw"
+        csv_filename = f"PHS_Highest_X_Peak_Summary_{timestamp}{norm_suffix}.csv"
         csv_path = os.path.join(save_path, csv_filename)
         
         try:
@@ -253,8 +329,12 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False, custom_
         df = pd.DataFrame(results)
         print("\n" + "="*80)
         print("SUMMARY OF HIGHEST X PEAKS:")
+        if normalise:
+            print("(normalised by runtime where available)")
+        else:
+            print("(Raw counts - no normalization)")
         print("="*80)
-        display_columns = ["File", "Highest_X_Peak_X", "Highest_X_Peak_Y", "Runtime", "StartDateTime"]
+        display_columns = ["File", "Highest_X_Peak_X", "Highest_X_Peak_Y", "Runtime", "StartDateTime", "normalised"]
         print(df[display_columns].to_string(index=False))
         print("="*80)
     else:
@@ -268,5 +348,10 @@ if __name__ == "__main__":
     folder_path = r"\\isis\shares\Detectors\Ben Thompson 2025-2026\Ben Thompson 2025-2025 Shared\Labs\Scintillating Tile Tests\pmt_rig_250825\bulk_tile_testing\for_code_testing"
     custom_save_path = r"\\isis\shares\Detectors\Ben Thompson 2025-2026\Ben Thompson 2025-2025 Shared\Labs\Scintillating Tile Tests\pmt_rig_250825\bulk_tile_testing\for_code_testing"
     
-    # Process the folder
-    process_phs_folder(folder_path, save_results=True, save_plots=True, custom_save_path=custom_save_path)
+    # Process the folder with normalization (default)
+    process_phs_folder(folder_path, save_results=True, save_plots=True, 
+                      custom_save_path=custom_save_path, normalise=True)
+    
+    # To process without normalization, use:
+    # process_phs_folder(folder_path, save_results=True, save_plots=True, 
+    #                   custom_save_path=custom_save_path, normalise=False)
