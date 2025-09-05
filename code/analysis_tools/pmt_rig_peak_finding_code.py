@@ -51,7 +51,7 @@ def read_set_file(data_file_path):
 # ------------------------
 def parse_runtime_to_seconds(runtime_str):
     """
-    Parse runtime string to seconds for normalization
+    Parse runtime string to seconds for normalisation
     Supports formats like 'HH:MM:SS' or just seconds as string
     """
     if runtime_str is None:
@@ -112,7 +112,7 @@ def analyze_largest_peak(x, y, window=21, poly=3, prominence=0.05,
     """
     Smooths data, finds peak with highest x-value, fits Gaussian, and optionally plots/saves results.
     """
-    # Parse runtime for normalization
+    # Parse runtime for normalisation
     runtime_seconds = parse_runtime_to_seconds(runtime) if runtime else None
     
     # normalise data if requested and runtime is available
@@ -120,10 +120,10 @@ def analyze_largest_peak(x, y, window=21, poly=3, prominence=0.05,
     if normalise and runtime_seconds and runtime_seconds > 0:
         y = y / runtime_seconds
         y_label = "Counts/second"
-        normalization_note = f"normalised by runtime ({runtime}s)"
+        normalisation_note = f"normalised by runtime ({runtime}s)"
     else:
         y_label = "Counts"
-        normalization_note = "Raw counts (no normalization)" if not normalise else "Raw counts (runtime unavailable)"
+        normalisation_note = "Raw counts (no normalisation)" if not normalise else "Raw counts (runtime unavailable)"
     
     # Smooth data (using potentially normalised y)
     y_smooth = savgol_filter(y, window_length=window, polyorder=poly)
@@ -160,7 +160,6 @@ def analyze_largest_peak(x, y, window=21, poly=3, prominence=0.05,
     
     # Plot original (potentially normalised) data
     if normalise and runtime_seconds:
-        plt.plot(x, y_original, label="Raw Spectrum", color="lightgray", alpha=0.5, linewidth=1)
         plt.plot(x, y, label="normalised Spectrum", color="lightblue", alpha=0.7, linewidth=1.5)
     else:
         plt.plot(x, y, label="Raw Spectrum", color="lightgray", alpha=0.7)
@@ -173,7 +172,7 @@ def analyze_largest_peak(x, y, window=21, poly=3, prominence=0.05,
     # Create info text for the plot
     info_text = f'Runtime: {runtime}\n'
     info_text += f'Start DateTime: {start_datetime}\n'
-    info_text += f'{normalization_note}\n'
+    info_text += f'{normalisation_note}\n'
     info_text += 'Integration Time (to be added)'
     
     plt.figtext(0.76, 0.71, info_text,
@@ -255,7 +254,7 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False,
 
     results = []
     print(f"Found {len(files)} files to analyze.")
-    print(f"Normalization: {'ON' if normalise else 'OFF'}")
+    print(f"normalisation: {'ON' if normalise else 'OFF'}")
     print("")
 
     # Use custom save path if provided, else default to folder_path
@@ -292,7 +291,7 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False,
             print(f"No peaks found in {file}")
             continue
 
-        # Store results with normalization info
+        # Store results with normalisation info
         result = {
             "File": Path(file).name,
             "Highest_X_Peak_X": peak_x,
@@ -306,7 +305,7 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False,
         }
         results.append(result)
         
-        # Print status with normalization info
+        # Print status with normalisation info
         norm_status = " (normalised)" if result["normalised"] else " (raw)"
         print(f"Peak found at X = {peak_x:.5f}, Y = {peak_y:.2f}{norm_status}\n")
 
@@ -332,7 +331,7 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False,
         if normalise:
             print("(normalised by runtime where available)")
         else:
-            print("(Raw counts - no normalization)")
+            print("(Raw counts - no normalisation)")
         print("="*80)
         display_columns = ["File", "Highest_X_Peak_X", "Highest_X_Peak_Y", "Runtime", "StartDateTime", "normalised"]
         print(df[display_columns].to_string(index=False))
@@ -345,13 +344,13 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False,
 # ------------------------
 if __name__ == "__main__":
     # Update these paths as needed
-    folder_path = r"\\isis\shares\Detectors\Ben Thompson 2025-2026\Ben Thompson 2025-2025 Shared\Labs\Scintillating Tile Tests\pmt_rig_250825\bulk_tile_testing\for_code_testing"
-    custom_save_path = r"\\isis\shares\Detectors\Ben Thompson 2025-2026\Ben Thompson 2025-2025 Shared\Labs\Scintillating Tile Tests\pmt_rig_250825\bulk_tile_testing\for_code_testing"
+    folder_path = r"\\isis\shares\Detectors\Ben Thompson 2025-2026\Ben Thompson 2025-2025 Shared\Labs\Scintillating Tile Tests\pmt_rig_250825\code_testing"
+    custom_save_path = r"\\isis\shares\Detectors\Ben Thompson 2025-2026\Ben Thompson 2025-2025 Shared\Labs\Scintillating Tile Tests\pmt_rig_250825\code_testing"
     
-    # Process the folder with normalization (default)
+    # Process the folder with normalisation (default)
     process_phs_folder(folder_path, save_results=True, save_plots=True, 
-                      custom_save_path=custom_save_path, normalise=True)
+                      custom_save_path=custom_save_path, normalise=False)
     
-    # To process without normalization, use:
+    # To process without normalisation, use:
     # process_phs_folder(folder_path, save_results=True, save_plots=True, 
     #                   custom_save_path=custom_save_path, normalise=False)
