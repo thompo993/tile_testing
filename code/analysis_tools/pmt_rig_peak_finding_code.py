@@ -22,15 +22,16 @@ def gaussian(x, A, mu, sigma):
 # ------------------------
 def read_set_file(data_file_path):
     """
-    Read the associated .set file and extract Runtime and StartDateTime
+    Read the associated .set file and extract Runtime, StartDateTime, and Integration settings
     """
     # Get the .set file path by changing the extension
     set_file_path = Path(data_file_path).with_suffix('.set')
     
     runtime = None
     start_datetime = None
+    integration_time = None
+    is_integration_enabled = None
     
-    #Here needs to be adjusted in order to add in a search for if intergration is off, or on, and if on, what the time is. 
     if set_file_path.exists():
         try:
             with open(set_file_path, 'r') as f:
@@ -40,12 +41,40 @@ def read_set_file(data_file_path):
                         runtime = line.split('=')[1]
                     elif line.startswith('StartDateTime='):
                         start_datetime = line.split('=')[1]
+                    elif line.startswith('IntegrationTime='):
+                        integration_time = line.split('=')[1]
+                    elif line.startswith('IsIntegrationEnabled='):
+                        is_integration_enabled = line.split('=')[1].lower() == 'true'
         except Exception as e:
             print(f"Error reading .set file {set_file_path}: {e}")
     else:
         print(f"No .set file found for {Path(data_file_path).name}")
     
-    return runtime, start_datetime
+    return runtime, start_datetime, integration_time, is_integration_enabled
+
+# ------------------------
+# Format integration info for display
+# ------------------------
+def format_integration_info(integration_time, is_integration_enabled):
+    """
+    Format integration information for display in the info text
+    """
+    if is_integration_enabled is None:
+        return "Integration: Not specified"
+    elif not is_integration_enabled:
+        return "Integration: OFF"
+    elif integration_time is not None:
+        # Try to format scientific notation nicely
+        try:
+            time_value = float(integration_time)
+            if time_value >= 1:
+                return f"Integration: {time_value:.3f}s"
+            else:
+                return f"Integration: {time_value:.2e}s"
+        except (ValueError, TypeError):
+            return f"Integration: {integration_time}"
+    else:
+        return "Integration: ON (time not specified)"
 
 # ------------------------
 # Parse runtime to seconds
@@ -109,7 +138,8 @@ def load_phs_file(file_path):
 # ------------------------
 def analyze_largest_peak(x, y, window=21, poly=3, prominence=0.05,
                          show_plot=True, save_plot=False, save_path=None, file_name=None,
-                         runtime=None, start_datetime=None, normalise=True):
+                         runtime=None, start_datetime=None, integration_time=None, 
+                         is_integration_enabled=None, normalise=True):
     """
     Smooths data, finds peak with highest x-value, fits Gaussian, and optionally plots/saves results.
     """
@@ -170,11 +200,12 @@ def analyze_largest_peak(x, y, window=21, poly=3, prominence=0.05,
     plt.plot(x_fit, gaussian(x_fit, *popt), "g--", linewidth=3,
              label="Gaussian Fit (highest x peak)")
     
-    # Create info text for the plot
+    # Create info text for the plot with integration information
+    integration_info = format_integration_info(integration_time, is_integration_enabled)
     info_text = f'Runtime: {runtime}\n'
     info_text += f'Start DateTime: {start_datetime}\n'
     info_text += f'{normalisation_note}\n'
-    info_text += 'Integration Time (to be added)'
+    info_text += integration_info
     
     plt.figtext(0.76, 0.71, info_text,
                 fontsize=10, bbox=dict(boxstyle="round,pad=0.5", facecolor="lightgray", alpha=0.8))
@@ -274,8 +305,8 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False,
             print(f"Skipping file: {file}")
             continue
 
-        # Read associated .set file
-        runtime, start_datetime = read_set_file(file)
+        # Read associated .set file (now includes integration settings)
+        runtime, start_datetime, integration_time, is_integration_enabled = read_set_file(file)
 
         peaks, peak_x, peak_y, popt = analyze_largest_peak(
             x, y,
@@ -285,6 +316,8 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False,
             file_name=Path(file).name,
             runtime=runtime,
             start_datetime=start_datetime,
+            integration_time=integration_time,
+            is_integration_enabled=is_integration_enabled,
             normalise=normalise
         )
 
@@ -292,7 +325,7 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False,
             print(f"No peaks found in {file}")
             continue
 
-        # Store results with normalisation info
+        # Store results with normalisation and integration info
         result = {
             "File": Path(file).name,
             "Highest_X_Peak_X": peak_x,
@@ -302,13 +335,17 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False,
             "Gaussian_Sigma": popt[2],
             "Runtime": runtime,
             "StartDateTime": start_datetime,
+            "IntegrationTime": integration_time,
+            "IsIntegrationEnabled": is_integration_enabled,
             "normalised": normalise and parse_runtime_to_seconds(runtime) is not None
         }
         results.append(result)
         
         # Print status with normalisation info
         norm_status = " (normalised)" if result["normalised"] else " (raw)"
-        print(f"Peak found at X = {peak_x:.5f}, Y = {peak_y:.2f}{norm_status}\n")
+        integration_info = format_integration_info(integration_time, is_integration_enabled)
+        print(f"Peak found at X = {peak_x:.5f}, Y = {peak_y:.2f}{norm_status}")
+        print(f"{integration_info}\n")
 
     # Save summary CSV in the save path with timestamp
     if save_results and results:
@@ -334,7 +371,8 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False,
         else:
             print("(Raw counts - no normalisation)")
         print("="*80)
-        display_columns = ["File", "Highest_X_Peak_X", "Highest_X_Peak_Y", "Runtime", "StartDateTime", "normalised"]
+        display_columns = ["File", "Highest_X_Peak_X", "Highest_X_Peak_Y", "Runtime", 
+                          "StartDateTime", "IntegrationTime", "IsIntegrationEnabled", "normalised"]
         print(df[display_columns].to_string(index=False))
         print("="*80)
     else:
