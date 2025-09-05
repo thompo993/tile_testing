@@ -18,6 +18,35 @@ def gaussian(x, A, mu, sigma):
     return A * np.exp(-(x - mu)**2 / (2 * sigma**2))
 
 # ------------------------
+# Read .set file for Runtime and StartDateTime
+# ------------------------
+def read_set_file(data_file_path):
+    """
+    Read the associated .set file and extract Runtime and StartDateTime
+    """
+    # Get the .set file path by changing the extension
+    set_file_path = Path(data_file_path).with_suffix('.set')
+    
+    runtime = None
+    start_datetime = None
+    
+    if set_file_path.exists():
+        try:
+            with open(set_file_path, 'r') as f:
+                for line in f:
+                    line = line.strip()
+                    if line.startswith('RunTime='):
+                        runtime = line.split('=')[1]
+                    elif line.startswith('StartDateTime='):
+                        start_datetime = line.split('=')[1]
+        except Exception as e:
+            print(f"Error reading .set file {set_file_path}: {e}")
+    else:
+        print(f"No .set file found for {Path(data_file_path).name}")
+    
+    return runtime, start_datetime
+
+# ------------------------
 # Load PHS data
 # ------------------------
 def load_phs_file(file_path):
@@ -50,7 +79,8 @@ def load_phs_file(file_path):
 # Analyze highest X peak in one file
 # ------------------------
 def analyze_largest_peak(x, y, window=21, poly=3, prominence=0.05,
-                         show_plot=True, save_plot=False, save_path=None, file_name=None):
+                         show_plot=True, save_plot=False, save_path=None, file_name=None,
+                         runtime=None, start_datetime=None):
     """
     Smooths data, finds peak with highest x-value, fits Gaussian, and optionally plots/saves results.
     """
@@ -84,19 +114,32 @@ def analyze_largest_peak(x, y, window=21, poly=3, prominence=0.05,
     except RuntimeError:
         popt = [peak_y, peak_x, (x_fit[-1] - x_fit[0]) / 6]
 
-    # Always show the fit while analyzing
-    plt.figure(figsize=(10, 6))
-    plt.plot(x, y, label="Raw Spectrum", color="lightgray")
-    plt.plot(x, y_smooth, label="Smoothed Spectrum", color="blue")
-    plt.plot(x[peaks], y_smooth[peaks], "ro", label="Detected Peaks")
-    plt.plot(x_fit, gaussian(x_fit, *popt), "g--", linewidth=2,
+    # Create the plot
+    plt.figure(figsize=(12, 8))
+    plt.plot(x, y, label="Raw Spectrum", color="lightgray", alpha=0.7)
+    plt.plot(x, y_smooth, label="Smoothed Spectrum", color="blue", linewidth=2)
+    plt.plot(x[peaks], y_smooth[peaks], "ro", markersize=8, label="Detected Peaks")
+    plt.plot(x_fit, gaussian(x_fit, *popt), "g--", linewidth=3,
              label="Gaussian Fit (highest x peak)")
-    plt.axvline(peak_x, color="purple", linestyle="--", label=f"Peak = {peak_x:.4f}")
-    plt.xlabel("Voltage Output")
-    plt.ylabel("Counts")
-    plt.title(f"Highest X Peak Detection: {file_name if file_name else ''}")
-    plt.legend()
-    plt.grid()
+    
+    # Create info text for the plot
+    info_text = f'Runtime: {runtime}\n'
+    info_text += f'Start DateTime: {start_datetime}\n'
+    info_text += 'Integration Time (too be added)'
+    
+    
+    plt.figtext(0.76, 0.71, info_text,
+                fontsize=10, bbox=dict(boxstyle="round,pad=0.5", facecolor="lightgray", alpha=0.8))
+    
+    plt.axvline(peak_x, color="purple", linestyle="--", linewidth=2, 
+                label=f"Peak X = {peak_x:.4f}")
+    plt.xlabel("Voltage Output", fontsize=12)
+    plt.ylabel("Counts", fontsize=12)
+    plt.title(f"Highest X Peak Detection: {file_name if file_name else 'Unknown File'}", 
+              fontsize=14, fontweight='bold')
+    plt.legend(fontsize=10)
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
 
     # Save plot if requested
     if save_plot and save_path and file_name:
@@ -117,7 +160,7 @@ def analyze_largest_peak(x, y, window=21, poly=3, prominence=0.05,
         except Exception as e:
             print(f"Error saving plot: {e}")
 
-    # Always display the plot interactively
+    # Show or close the plot
     if show_plot:
         plt.show()
     else:
@@ -156,19 +199,24 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False, custom_
         if save_plots:
             print(f"Plots will be saved to: {save_path}")
 
-    for file in files:
-        print(f"Processing: {Path(file).name}")
+    for i, file in enumerate(files, 1):
+        print(f"Processing {i}/{len(files)}: {Path(file).name}")
         x, y = load_phs_file(file)
         if x is None or y is None:
             print(f"Skipping file: {file}")
             continue
+
+        # Read associated .set file
+        runtime, start_datetime = read_set_file(file)
 
         peaks, peak_x, peak_y, popt = analyze_largest_peak(
             x, y,
             show_plot=True,  # Always show the fit interactively
             save_plot=save_plots,
             save_path=save_path,
-            file_name=Path(file).name
+            file_name=Path(file).name,
+            runtime=runtime,
+            start_datetime=start_datetime
         )
 
         if peak_x is None:
@@ -177,12 +225,15 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False, custom_
 
         results.append({
             "File": Path(file).name,
-            "Highest X Peak X": peak_x,
-            "Highest X Peak Y": peak_y,
+            "Highest_X_Peak_X": peak_x,
+            "Highest_X_Peak_Y": peak_y,
             "Gaussian_A": popt[0],
             "Gaussian_Mu": popt[1],
-            "Gaussian_Sigma": popt[2]
+            "Gaussian_Sigma": popt[2],
+            "Runtime": runtime,
+            "StartDateTime": start_datetime
         })
+        print(f"Peak found at X = {peak_x:.5f}, Y = {peak_y:.2f}\n")
 
     # Save summary CSV in the save path with timestamp
     if save_results and results:
@@ -193,22 +244,29 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False, custom_
         
         try:
             pd.DataFrame(results).to_csv(csv_path, index=False)
-            print(f"\nResults summary saved to: {csv_path}")
+            print(f"Results summary saved to: {csv_path}")
         except Exception as e:
             print(f"Error saving results CSV: {e}")
 
     # Print results table to console
     if results:
         df = pd.DataFrame(results)
-        print("\nSummary of Highest X Peaks:")
-        print(df[["File", "Highest X Peak X", "Highest X Peak Y"]].to_string(index=False))
+        print("\n" + "="*80)
+        print("SUMMARY OF HIGHEST X PEAKS:")
+        print("="*80)
+        display_columns = ["File", "Highest_X_Peak_X", "Highest_X_Peak_Y", "Runtime", "StartDateTime"]
+        print(df[display_columns].to_string(index=False))
+        print("="*80)
+    else:
+        print("No results to display.")
 
 # ------------------------
 # Example usage
 # ------------------------
 if __name__ == "__main__":
-    folder_path = r"\\isis\Shares\Detectors\Ben Thompson 2025-2026\Ben Thompson 2025-2025 Shared\Labs\Scintillating Tile Tests\pmt_rig_250825\bulk_tile_testing\used_in_spreadsheet_traces_250904"
-    custom_save_path = r"\\isis\Shares\Detectors\Ben Thompson 2025-2026\Ben Thompson 2025-2025 Shared\Labs\Scintillating Tile Tests\peak_finding_plots_log"
+    # Update these paths as needed
+    folder_path = r"\\isis\shares\Detectors\Ben Thompson 2025-2026\Ben Thompson 2025-2025 Shared\Labs\Scintillating Tile Tests\pmt_rig_250825\bulk_tile_testing\for_code_testing"
+    custom_save_path = r"\\isis\shares\Detectors\Ben Thompson 2025-2026\Ben Thompson 2025-2025 Shared\Labs\Scintillating Tile Tests\pmt_rig_250825\bulk_tile_testing\for_code_testing"
     
     # Process the folder
     process_phs_folder(folder_path, save_results=True, save_plots=True, custom_save_path=custom_save_path)
