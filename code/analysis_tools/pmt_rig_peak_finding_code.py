@@ -30,6 +30,7 @@ def read_set_file(data_file_path):
     runtime = None
     start_datetime = None
     
+    #Here needs to be adjusted in order to add in a search for if intergration is off, or on, and if on, what the time is. 
     if set_file_path.exists():
         try:
             with open(set_file_path, 'r') as f:
