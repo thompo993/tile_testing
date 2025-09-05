@@ -18,6 +18,35 @@ def gaussian(x, A, mu, sigma):
     return A * np.exp(-(x - mu)**2 / (2 * sigma**2))
 
 # ------------------------
+# Read .set file for Runtime and StartDateTime
+# ------------------------
+def read_set_file(data_file_path):
+    """
+    Read the associated .set file and extract Runtime and StartDateTime
+    """
+    # Get the .set file path by changing the extension
+    set_file_path = Path(data_file_path).with_suffix('.set')
+    
+    runtime = None
+    start_datetime = None
+    
+    if set_file_path.exists():
+        try:
+            with open(set_file_path, 'r') as f:
+                for line in f:
+                    line = line.strip()
+                    if line.startswith('RunTime='):
+                        runtime = line.split('=')[1]
+                    elif line.startswith('StartDateTime='):
+                        start_datetime = line.split('=')[1]
+        except Exception as e:
+            print(f"Error reading .set file {set_file_path}: {e}")
+    else:
+        print(f"No .set file found for {Path(data_file_path).name}")
+    
+    return runtime, start_datetime
+
+# ------------------------
 # Load PHS data
 # ------------------------
 def load_phs_file(file_path):
@@ -163,6 +192,9 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False, custom_
             print(f"Skipping file: {file}")
             continue
 
+        # Read associated .set file
+        runtime, start_datetime = read_set_file(file)
+
         peaks, peak_x, peak_y, popt = analyze_largest_peak(
             x, y,
             show_plot=True,  # Always show the fit interactively
@@ -181,7 +213,9 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False, custom_
             "Highest X Peak Y": peak_y,
             "Gaussian_A": popt[0],
             "Gaussian_Mu": popt[1],
-            "Gaussian_Sigma": popt[2]
+            "Gaussian_Sigma": popt[2],
+            "Runtime": runtime,
+            "StartDateTime": start_datetime
         })
 
     # Save summary CSV in the save path with timestamp
@@ -201,14 +235,14 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False, custom_
     if results:
         df = pd.DataFrame(results)
         print("\nSummary of Highest X Peaks:")
-        print(df[["File", "Highest X Peak X", "Highest X Peak Y"]].to_string(index=False))
+        print(df[["File", "Highest X Peak X", "Highest X Peak Y", "Runtime", "StartDateTime"]].to_string(index=False))
 
 # ------------------------
 # Example usage
 # ------------------------
 if __name__ == "__main__":
-    folder_path = r"\\isis\Shares\Detectors\Ben Thompson 2025-2026\Ben Thompson 2025-2025 Shared\Labs\Scintillating Tile Tests\pmt_rig_250825\bulk_tile_testing\used_in_spreadsheet_traces_250904"
-    custom_save_path = r"\\isis\Shares\Detectors\Ben Thompson 2025-2026\Ben Thompson 2025-2025 Shared\Labs\Scintillating Tile Tests\peak_finding_plots_log"
+    folder_path = r"\\isis\shares\Detectors\Ben Thompson 2025-2026\Ben Thompson 2025-2025 Shared\Labs\Scintillating Tile Tests\pmt_rig_250825\bulk_tile_testing\for_code_testing"
+    custom_save_path = r"\\isis\shares\Detectors\Ben Thompson 2025-2026\Ben Thompson 2025-2025 Shared\Labs\Scintillating Tile Tests\pmt_rig_250825\bulk_tile_testing\for_code_testing"
     
     # Process the folder
     process_phs_folder(folder_path, save_results=True, save_plots=True, custom_save_path=custom_save_path)
