@@ -249,6 +249,89 @@ def analyze_largest_peak(x, y, window=21, poly=3, prominence=0.05,
     return peaks, peak_x, peak_y, popt
 
 # ------------------------
+# Create overlay plot of all spectra
+# ------------------------
+def create_phs_overlay(spectra_data, save_path=None, normalise=True):
+    """
+    Create an overlay plot of all PHS spectra
+    
+    Parameters:
+    -----------
+    spectra_data : list of dict
+        List containing dictionaries with keys: 'x', 'y', 'filename', 'runtime'
+    save_path : str
+        Path to save the overlay plot
+    normalise : bool
+        Whether the data was normalised
+    """
+    if not spectra_data:
+        print("No spectra data available for overlay plot.")
+        return
+    
+    # Create the overlay plot
+    plt.figure(figsize=(14, 10))
+    
+    # Define a color map for different files
+    colors = plt.cm.tab10(np.linspace(0, 1, min(len(spectra_data), 10)))
+    if len(spectra_data) > 10:
+        # If more than 10 files, use a continuous colormap
+        colors = plt.cm.viridis(np.linspace(0, 1, len(spectra_data)))
+    
+    for i, spectrum in enumerate(spectra_data):
+        x = spectrum['x']
+        y = spectrum['y']
+        filename = spectrum['filename']
+        runtime = spectrum['runtime']
+        
+        # Use different line styles for better distinction if many files
+        linestyle = '-' if len(spectra_data) <= 10 else '-'
+        alpha = 0.7 if len(spectra_data) <= 5 else 0.6
+        linewidth = 1.5 if len(spectra_data) <= 10 else 1.0
+        
+        plt.plot(x, y, color=colors[i], alpha=alpha, linewidth=linewidth,
+                linestyle=linestyle, label=f"{filename}")
+    
+    # Set labels and title
+    y_label = "Counts/second" if normalise else "Counts"
+    plt.xlabel("Voltage Output", fontsize=12)
+    plt.ylabel(y_label, fontsize=12)
+    
+    title = "PHS Spectra Overlay - "
+    title += "Normalised by Runtime" if normalise else "Raw Counts"
+    plt.title(title, fontsize=14, fontweight='bold')
+    
+    # Add legend (handle many files gracefully)
+    if len(spectra_data) <= 15:
+        plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=10)
+    else:
+        # For many files, add a simplified legend or note
+        plt.figtext(0.02, 0.98, f"Showing {len(spectra_data)} spectra", 
+                   fontsize=10, bbox=dict(boxstyle="round,pad=0.3", facecolor="lightgray", alpha=0.8),
+                   verticalalignment='top')
+    
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+    
+    # Save overlay plot if requested
+    if save_path:
+        # Ensure the save path exists
+        os.makedirs(save_path, exist_ok=True)
+        
+        # Generate timestamp
+        timestamp = datetime.now().strftime("%y%m%d_%H%M%S")
+        norm_suffix = "_normalised" if normalise else "_raw"
+        overlay_filename = f"PHS_Spectra_Overlay_{timestamp}{norm_suffix}.png"
+        full_overlay_path = os.path.join(save_path, overlay_filename)
+        
+        try:
+            plt.savefig(full_overlay_path, dpi=300, bbox_inches='tight')
+            print(f"Overlay plot saved to: {full_overlay_path}")
+        except Exception as e:
+            print(f"Error saving overlay plot: {e}")
+    
+    plt.show()
+
+# ------------------------
 # Find all data files in folder
 # ------------------------
 def find_phs_files(folder_path):
@@ -262,7 +345,7 @@ def find_phs_files(folder_path):
 # Process all files in folder
 # ------------------------
 def process_phs_folder(folder_path, save_results=True, save_plots=False, 
-                       custom_save_path=None, normalise=True):
+                       custom_save_path=None, normalise=True, phs_overlay=False):
     """
     Process all PHS files in a folder.
     
@@ -278,6 +361,8 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False,
         Custom path for saving outputs
     normalise : bool
         Whether to normalise counts by runtime (default: True)
+    phs_overlay : bool
+        Whether to create an overlay plot of all spectra (default: False)
     """
     files = find_phs_files(folder_path)
     if not files:
@@ -285,8 +370,11 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False,
         return
 
     results = []
+    spectra_data = []  # Store data for overlay plot
+    
     print(f"Found {len(files)} files to analyze.")
     print(f"normalisation: {'ON' if normalise else 'OFF'}")
+    print(f"PHS Overlay: {'ON' if phs_overlay else 'OFF'}")
     print("")
 
     # Use custom save path if provided, else default to folder_path
@@ -307,6 +395,24 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False,
 
         # Read associated .set file (now includes integration settings)
         runtime, start_datetime, integration_time, is_integration_enabled = read_set_file(file)
+
+        # Store original data for overlay (before any processing)
+        y_original = y.copy()
+        runtime_seconds = parse_runtime_to_seconds(runtime) if runtime else None
+        
+        # Apply normalisation for overlay data if requested
+        if phs_overlay:
+            if normalise and runtime_seconds and runtime_seconds > 0:
+                y_overlay = y_original / runtime_seconds
+            else:
+                y_overlay = y_original.copy()
+            
+            spectra_data.append({
+                'x': x.copy(),
+                'y': y_overlay,
+                'filename': Path(file).name,
+                'runtime': runtime
+            })
 
         peaks, peak_x, peak_y, popt = analyze_largest_peak(
             x, y,
@@ -347,6 +453,11 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False,
         print(f"Peak found at X = {peak_x:.5f}, Y = {peak_y:.2f}{norm_status}")
         print(f"{integration_info}\n")
 
+    # Create overlay plot if requested
+    if phs_overlay and spectra_data:
+        print("\nCreating PHS spectra overlay plot...")
+        create_phs_overlay(spectra_data, save_path=save_path, normalise=normalise)
+
     # Save summary CSV in the save path with timestamp
     if save_results and results:
         # Generate timestamp for the CSV file as well
@@ -383,13 +494,17 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False,
 # ------------------------
 if __name__ == "__main__":
     # Update these paths as needed
-    folder_path = r"Folder Path Here"
+    folder_path = r"\\isis\shares\Detectors\Ben Thompson 2025-2026\Ben Thompson 2025-2025 Shared\Labs\Scintillating Tile Tests\pmt_rig_250825\tile_21_overlay_csv_250903"
     custom_save_path = r"Save Path Here"
     
-    # Process the folder with normalisation (default)
-    process_phs_folder(folder_path, save_results=True, save_plots=True, 
-                      custom_save_path=custom_save_path, normalise=True)
+    # Process the folder with normalisation and overlay (both enabled)
+    process_phs_folder(folder_path, save_results=False, save_plots=False, 
+                      custom_save_path=custom_save_path, normalise=True, phs_overlay=True)
     
-    # To process without normalisation, use:
+    # To process without normalisation but with overlay:
     # process_phs_folder(folder_path, save_results=True, save_plots=True, 
-    #                   custom_save_path=custom_save_path, normalise=False)
+    #                   custom_save_path=custom_save_path, normalise=False, phs_overlay=True)
+    
+    # To process without overlay:
+    # process_phs_folder(folder_path, save_results=True, save_plots=True, 
+    #                   custom_save_path=custom_save_path, normalise=True, phs_overlay=False)
