@@ -383,12 +383,12 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False,
 # ------------------------
 if __name__ == "__main__":
     # Update these paths as needed
-    folder_path = r"\\isis\shares\Detectors\Ben Thompson 2025-2026\Ben Thompson 2025-2025 Shared\Labs\Scintillating Tile Tests\pmt_rig_250825\bulk_tile_testing\used_in_spreadsheet_phs_250904"
-    custom_save_path = r"\\isis\shares\Detectors\Ben Thompson 2025-2026\Ben Thompson 2025-2025 Shared\Labs\Scintillating Tile Tests\peak_finding_plots_log"
+    folder_path = r"Folder Path Here"
+    custom_save_path = r"Save Path Here"
     
     # Process the folder with normalisation (default)
-    process_phs_folder(folder_path, save_results=False, save_plots=False, 
-                      custom_save_path=custom_save_path, normalise=False)
+    process_phs_folder(folder_path, save_results=True, save_plots=True, 
+                      custom_save_path=custom_save_path, normalise=True)
     
     # To process without normalisation, use:
     # process_phs_folder(folder_path, save_results=True, save_plots=True, 
