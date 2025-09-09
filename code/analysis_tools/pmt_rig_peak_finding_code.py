@@ -494,7 +494,7 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False,
 # ------------------------
 if __name__ == "__main__":
     # Update these paths as needed
-    folder_path = r"\\isis\shares\Detectors\Ben Thompson 2025-2026\Ben Thompson 2025-2025 Shared\Labs\Scintillating Tile Tests\pmt_rig_250825\tile_21_overlay_csv_250903"
+    folder_path = r"File Path Here"
     custom_save_path = r"Save Path Here"
     
     # Process the folder with normalisation and overlay (both enabled)
