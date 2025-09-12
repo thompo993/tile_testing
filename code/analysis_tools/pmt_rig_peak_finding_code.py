@@ -18,6 +18,60 @@ def gaussian(x, A, mu, sigma):
     return A * np.exp(-(x - mu)**2 / (2 * sigma**2))
 
 # ------------------------
+# Calculate FWHM from Gaussian sigma
+# ------------------------
+def calculate_fwhm(sigma):
+    """
+    Calculate Full Width at Half Maximum (FWHM) from Gaussian sigma parameter
+    FWHM = 2 * sqrt(2 * ln(2)) * sigma ≈ 2.355 * sigma
+    """
+    return 2.35482 * sigma
+
+# ------------------------
+# Find rightmost FWHM intercept
+# ------------------------
+def find_rightmost_fwhm_intercept(x_fit, popt, x, y_smooth):
+    """
+    Find the actual data point closest to half maximum with the largest X value.
+    
+    Parameters:
+    -----------
+    x_fit : array
+        X coordinates for the fitted region
+    popt : array
+        Gaussian parameters [A, mu, sigma]
+    x : array
+        Full X coordinate array
+    y_smooth : array
+        Smoothed Y values
+        
+    Returns:
+    --------
+    rightmost_x : float
+        X coordinate of the rightmost data point near half maximum
+    half_max : float
+        Y value at half maximum
+    """
+    A, mu, sigma = popt
+    half_max = A / 2
+    
+    # Find all points within 5% of half maximum
+    tolerance = 0.05 * half_max
+    near_half_max = np.abs(y_smooth - half_max) <= tolerance
+    
+    if not any(near_half_max):
+        # If no points found within tolerance, return analytical solution
+        fwhm_offset = sigma * np.sqrt(2 * np.log(2))
+        right_intercept = mu + fwhm_offset
+        return right_intercept, half_max
+        
+    # Among points near half max, find the one with largest x value
+    half_max_indices = np.where(near_half_max)[0]
+    rightmost_idx = half_max_indices[np.argmax(x[half_max_indices])]
+    
+    return x[rightmost_idx], y_smooth[rightmost_idx]
+
+# ------------------------
 # Read .set file for Runtime and StartDateTime
 # ------------------------
 def read_set_file(data_file_path):
@@ -141,7 +195,7 @@ def analyze_largest_peak(x, y, window=21, poly=3, prominence=0.05,
                          runtime=None, start_datetime=None, integration_time=None, 
                          is_integration_enabled=None, normalise=True):
     """
-    Smooths data, finds peak with highest x-value, fits Gaussian, and optionally plots/saves results.
+    Smooths data, finds peak with highest x-value, fits Gaussian, and finds the rightmost FWHM intercept.
     """
     # Parse runtime for normalisation
     runtime_seconds = parse_runtime_to_seconds(runtime) if runtime else None
@@ -168,7 +222,7 @@ def analyze_largest_peak(x, y, window=21, poly=3, prominence=0.05,
 
     if len(peaks) == 0:
         print("No peaks detected.")
-        return None, None, None, None
+        return None, None, None, None, None, None
 
     # Select peak with highest x-value (rightmost peak)
     highest_x_peak_idx = peaks[np.argmax(x[peaks])]
@@ -186,6 +240,12 @@ def analyze_largest_peak(x, y, window=21, poly=3, prominence=0.05,
     except RuntimeError:
         popt = [peak_y, peak_x, (x_fit[-1] - x_fit[0]) / 6]
 
+    # Find rightmost FWHM intercept
+    rightmost_fwhm_x, half_max = find_rightmost_fwhm_intercept(x_fit, popt, x, y_smooth)
+    
+    # Calculate traditional FWHM for display purposes
+    fwhm = calculate_fwhm(popt[2])
+
     # Create the plot
     plt.figure(figsize=(12, 8))
     
@@ -200,14 +260,30 @@ def analyze_largest_peak(x, y, window=21, poly=3, prominence=0.05,
     plt.plot(x_fit, gaussian(x_fit, *popt), "g--", linewidth=3,
              label="Gaussian Fit (highest x peak)")
     
-    # Create info text for the plot with integration information
+    # Add FWHM visualization
+    fwhm_left = popt[1] - fwhm / 2
+    fwhm_right = popt[1] + fwhm / 2
+    plt.axhline(y=half_max, color="orange", linestyle=":", alpha=0.7, 
+                label=f"Half Maximum (Y = {half_max:.2f})")
+    plt.axvline(x=fwhm_left, color="orange", linestyle=":", alpha=0.7)
+    plt.axvline(x=fwhm_right, color="orange", linestyle=":", alpha=0.7)
+    plt.plot([fwhm_left, fwhm_right], [half_max, half_max], "o-", 
+             color="orange", markersize=6, linewidth=2, alpha=0.8,
+             label=f"FWHM = {fwhm:.5f}")
+    
+    # Highlight the rightmost FWHM intercept
+    plt.plot(rightmost_fwhm_x, half_max, "s", color="red", markersize=10, 
+             label=f"Rightmost FWHM X = {rightmost_fwhm_x:.5f}")
+    
+    # Create info text for the plot with integration information and rightmost FWHM intercept
     integration_info = format_integration_info(integration_time, is_integration_enabled)
     info_text = f'Runtime: {runtime}\n'
     info_text += f'Start DateTime: {start_datetime}\n'
     info_text += f'{normalisation_note}\n'
-    info_text += integration_info
+    info_text += integration_info + '\n'
+    info_text += f'Rightmost FWHM X: {rightmost_fwhm_x:.5f}'
     
-    plt.figtext(0.76, 0.71, info_text,
+    plt.figtext(0.76, 0.68, info_text,
                 fontsize=10, bbox=dict(boxstyle="round,pad=0.5", facecolor="lightgray", alpha=0.8))
     
     plt.axvline(peak_x, color="purple", linestyle="--", linewidth=2, 
@@ -216,7 +292,7 @@ def analyze_largest_peak(x, y, window=21, poly=3, prominence=0.05,
     plt.ylabel(y_label, fontsize=12)
     plt.title(f"Highest X Peak Detection: {file_name if file_name else 'Unknown File'}", 
               fontsize=14, fontweight='bold')
-    plt.legend(fontsize=10)
+    plt.legend(fontsize=9, loc='upper left')
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
 
@@ -246,7 +322,7 @@ def analyze_largest_peak(x, y, window=21, poly=3, prominence=0.05,
     else:
         plt.close()
 
-    return peaks, peak_x, peak_y, popt
+    return peaks, peak_x, peak_y, popt, fwhm, rightmost_fwhm_x
 
 # ------------------------
 # Create overlay plot of all spectra
@@ -414,7 +490,7 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False,
                 'runtime': runtime
             })
 
-        peaks, peak_x, peak_y, popt = analyze_largest_peak(
+        peaks, peak_x, peak_y, popt, fwhm, rightmost_fwhm_x = analyze_largest_peak(
             x, y,
             show_plot=True,  # Always show the fit interactively
             save_plot=save_plots,
@@ -431,11 +507,13 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False,
             print(f"No peaks found in {file}")
             continue
 
-        # Store results with normalisation and integration info
+        # Store results with normalisation, integration info, and rightmost FWHM intercept
         result = {
             "File": Path(file).name,
             "Highest_X_Peak_X": peak_x,
             "Highest_X_Peak_Y": peak_y,
+            "FWHM": fwhm,
+            "Rightmost_FWHM_X": rightmost_fwhm_x,
             "Gaussian_A": popt[0],
             "Gaussian_Mu": popt[1],
             "Gaussian_Sigma": popt[2],
@@ -447,10 +525,12 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False,
         }
         results.append(result)
         
-        # Print status with normalisation info
+        # Print status with normalisation info and rightmost FWHM intercept
         norm_status = " (normalised)" if result["normalised"] else " (raw)"
         integration_info = format_integration_info(integration_time, is_integration_enabled)
         print(f"Peak found at X = {peak_x:.5f}, Y = {peak_y:.2f}{norm_status}")
+        print(f"FWHM = {fwhm:.5f}")
+        print(f"Rightmost FWHM X = {rightmost_fwhm_x:.5f}")
         print(f"{integration_info}\n")
 
     # Create overlay plot if requested
@@ -475,17 +555,18 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False,
     # Print results table to console
     if results:
         df = pd.DataFrame(results)
-        print("\n" + "="*80)
+        print("\n" + "="*100)
         print("SUMMARY OF HIGHEST X PEAKS:")
         if normalise:
             print("(normalised by runtime where available)")
         else:
             print("(Raw counts - no normalisation)")
-        print("="*80)
-        display_columns = ["File", "Highest_X_Peak_X", "Highest_X_Peak_Y", "Runtime", 
-                          "StartDateTime", "IntegrationTime", "IsIntegrationEnabled", "normalised"]
+        print("="*100)
+        display_columns = ["File", "Highest_X_Peak_X", "Highest_X_Peak_Y", "FWHM", 
+                          "Rightmost_FWHM_X", "Runtime", "StartDateTime", 
+                          "IntegrationTime", "IsIntegrationEnabled", "normalised"]
         print(df[display_columns].to_string(index=False))
-        print("="*80)
+        print("="*100)
     else:
         print("No results to display.")
 
@@ -494,7 +575,7 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False,
 # ------------------------
 if __name__ == "__main__":
     # Update these paths as needed
-    folder_path = r"File Path Here"
+    folder_path = r"\\isis\shares\Detectors\Ben Thompson 2025-2026\Ben Thompson 2025-2025 Shared\Labs\Scintillating Tile Tests\pmt_rig_250825\tile_21_overlay_csv_250903"
     custom_save_path = r"Save Path Here"
     
     # Process the folder with normalisation and overlay (both enabled)
