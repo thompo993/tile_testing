@@ -55,10 +55,10 @@ def plot_peak_scatter(file_path):
     plt.grid(True, linestyle="--", alpha=0.3)
     
     # Add legend
-    blue_patch = plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='blue', 
-                           markersize=8, label='Original Tiles')
-    red_patch = plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='red', 
-                          markersize=8, label='New Tiles')
+    blue_patch = plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='yellow', 
+                           markersize=8, label='Neil\'s visually good batch')
+    red_patch = plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='purrple', 
+                          markersize=8, label='1st RAL batch')
     plt.legend(handles=[blue_patch, red_patch], loc='best')
     
     # Add sample names as x-tick labels (rotated for readability)
@@ -94,7 +94,7 @@ def plot_peak_scatter(file_path):
 
 if __name__ == "__main__":
     # Replace with your CSV file path
-    file_path = r"\\isis\shares\Detectors\Ben Thompson 2025-2026\Ben Thompson 2025-2025 Shared\Labs\Scintillating Tile Tests\pmt_rig_250825\spreadsheets\Scatter Plots\scatter_plot__cleaned_single_tile21_250903.csv"
+    file_path = r"\\isis\shares\Detectors\Ben Thompson 2025-2026\Ben Thompson 2025-2025 Shared\Labs\Scintillating Tile Tests\pmt_rig_250825\spreadsheets\Scatter Plots\niel_ral_batch_compare_250917.csv"
     
     plot_peak_scatter(file_path)
     

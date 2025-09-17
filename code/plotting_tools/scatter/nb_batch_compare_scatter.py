@@ -67,11 +67,11 @@ def plot_peak_scatter(file_path):
     
     # Add legend
     blue_patch = plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='blue', 
-                           markersize=8, label='Original Tiles')
-    red_patch = plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='red', 
-                          markersize=8, label='Standard Tiles')
-    green_patch = plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='green', 
-                           markersize=8, label='New Batch Tiles (04/09/25)')
+                           markersize=8, label='Tile 21og')
+    red_patch = plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='purple', 
+                          markersize=8, label='1st RAl Resin Batch')
+    green_patch = plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='yellow', 
+                           markersize=8, label='Neils Visually good Batch')
     plt.legend(handles=[blue_patch, red_patch, green_patch], loc='best')
     
     # Add sample names as x-tick labels (rotated for readability)
@@ -114,7 +114,7 @@ def plot_peak_scatter(file_path):
 
 if __name__ == "__main__":
     # Replace with your CSV file path
-    file_path = r"\\isis\shares\Detectors\Ben Thompson 2025-2026\Ben Thompson 2025-2025 Shared\Labs\Scintillating Tile Tests\pmt_rig_250825\spreadsheets\Scatter Plots\nb_scatterplot_csv_250904.csv"
+    file_path = r"\\isis\shares\Detectors\Ben Thompson 2025-2026\Ben Thompson 2025-2025 Shared\Labs\Scintillating Tile Tests\pmt_rig_250825\spreadsheets\Scatter Plots\niel_ral_batch_compare_250917.csv"
     
     plot_peak_scatter(file_path)
     

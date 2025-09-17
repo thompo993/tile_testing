@@ -3,8 +3,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 # Configuration - Edit these parameters as needed
-CSV_FILE_PATH = r"\\isis\shares\Detectors\Ben Thompson 2025-2026\Ben Thompson 2025-2025 Shared\Labs\Scintillating Tile Tests\pmt_rig_250825\spreadsheets\Histograms\high_value_biased_sheet_250904.csv" 
-BIN_NUMBER = 24 # Change this to adjust the number of bins
+CSV_FILE_PATH = r"\\isis\shares\Detectors\Ben Thompson 2025-2026\Ben Thompson 2025-2025 Shared\Labs\Scintillating Tile Tests\pmt_rig_250825\spreadsheets\Histograms\ral_gb=new_ral_1stb=old_ral_neil_good_batch_comparison_250917.csv" 
+BIN_NUMBER = 8 # Change this to adjust the number of bins
 ALPHA = 0.7  # Transparency for overlapping histograms (0-1)
 
 def load_and_plot_histograms(csv_path, bins, alpha=0.7):
@@ -65,10 +65,10 @@ def load_and_plot_histograms(csv_path, bins, alpha=0.7):
         plt.figure(figsize=(12, 8))
         
         # Plot layered histograms
-        plt.hist(og_data, bins=bin_edges, alpha=alpha, label='Peak Locations (Original)', 
-                color='blue', edgecolor='black', linewidth=0.5)
-        plt.hist(new_data, bins=bin_edges, alpha=alpha, label='Peak Locations (New)', 
-                color='red', edgecolor='black', linewidth=0.5)
+        plt.hist(og_data, bins=bin_edges, alpha=alpha, label='1st RAL batch)', 
+                color='purple', edgecolor='black', linewidth=0.5)
+        plt.hist(new_data, bins=bin_edges, alpha=alpha, label='Neil\'s visually good batch', 
+                color='yellow', edgecolor='black', linewidth=0.5)
         
         # Customize the plot
         plt.xlabel('Peak Location Values', fontsize=12)
