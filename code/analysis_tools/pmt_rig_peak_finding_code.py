@@ -132,14 +132,11 @@ def load_phs_file(file_path, multi_channel=False):
         file_ext = Path(file_path).suffix.lower()
 
         if file_ext in ['.txt', '.dat']:
-            try:
-                data = pd.read_csv(file_path, sep='\t', header=0)
-            except:
-                data = pd.read_csv(file_path, sep=r'\s+', header=0)
-        elif file_ext == '.csv':
-            data = pd.read_csv(file_path, header=0)
+
+                data = pd.read_csv(file_path, sep="\t", header=0).dropna(axis=1, how="all")
+                print(data.head())
         else:
-            data = pd.read_csv(file_path, sep=None, engine='python', header=0)
+            print(f"Unsupported file format: {file_ext}")
 
         if not multi_channel:
             # Original single channel behavior
@@ -185,7 +182,7 @@ def load_phs_file(file_path, multi_channel=False):
                     col_idx += 2  # Move to next channel pair
                 else:
                     break
-            
+       
             return channels_data, channel_names
             
     except Exception as e:
@@ -198,7 +195,7 @@ def load_phs_file(file_path, multi_channel=False):
 # ------------------------
 # Analyze highest X peak in one file
 # ------------------------
-def analyze_largest_peak(x, y, window=21, poly=3, prominence=0.05,
+def analyze_largest_peak(x, y, window=10, poly=3, prominence=0.05,
                          show_plot=True, save_plot=False, save_path=None, file_name=None,
                          runtime=None, start_datetime=None, integration_time=None, 
                          is_integration_enabled=None, normalise=True, channel_name=None):
@@ -694,7 +691,7 @@ if __name__ == "__main__":
     custom_save_path = r"Save Path Here"
     
     # Process with multi-channel enabled
-    process_phs_folder(folder_path, save_results=True, save_plots=True, 
+    process_phs_folder(folder_path, save_results=False, save_plots=False, 
                       custom_save_path=custom_save_path, normalise=True, 
                       phs_overlay=True, multi_channel=True)
     
