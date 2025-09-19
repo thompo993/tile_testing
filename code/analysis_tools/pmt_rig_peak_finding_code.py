@@ -536,8 +536,8 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False,
             runtime, start_datetime, integration_time, is_integration_enabled = read_set_file(file)
             runtime_seconds = parse_runtime_to_seconds(runtime) if runtime else None
             
-            # Base result for this file
-            base_result = {
+            # Create base result for this file
+            combined_result = {
                 "File": Path(file).name,
                 "Runtime": runtime,
                 "StartDateTime": start_datetime,
@@ -589,41 +589,19 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False,
                     print(f"No peaks found in {channel_name}")
                     continue
                 
-                # Add channel-specific results to base result
-                result = base_result.copy()
-                result[f"Peak_{channel_name}_X"] = peak_x
-                result[f"Peak_{channel_name}_Y"] = peak_y
-                result[f"Gaussian_{channel_name}_A"] = popt[0]
-                result[f"Gaussian_{channel_name}_Mu"] = popt[1]
-                result[f"Gaussian_{channel_name}_Sigma"] = popt[2]
+                # Add channel-specific data to combined result
+                combined_result[f"Peak_{channel_name}_X"] = peak_x
+                combined_result[f"Peak_{channel_name}_Y"] = peak_y
+                combined_result[f"Gaussian_{channel_name}_A"] = popt[0]
+                combined_result[f"Gaussian_{channel_name}_Mu"] = popt[1]
+                combined_result[f"Gaussian_{channel_name}_Sigma"] = popt[2]
                 
                 # Print status
-                norm_status = " (normalised)" if result["normalised"] else " (raw)"
+                norm_status = " (normalised)" if combined_result["normalised"] else " (raw)"
                 print(f"{channel_name}: Peak found at X = {peak_x:.5f}, Y = {peak_y:.2f}{norm_status}")
             
-            # Add one result entry per file (with all channels)
-            if any(f"Peak_{ch}_X" in base_result for ch in channel_names for base_result in [base_result]):
-                # Create combined result with all channel data
-                combined_result = base_result.copy()
-                for channel_name in channel_names:
-                    if channel_name in channels_data:
-                        x = channels_data[channel_name]['x']
-                        y = channels_data[channel_name]['y']
-                        
-                        peaks, peak_x, peak_y, popt = analyze_largest_peak(
-                            x, y, show_plot=False, save_plot=False,
-                            runtime=runtime, start_datetime=start_datetime,
-                            integration_time=integration_time, is_integration_enabled=is_integration_enabled,
-                            normalise=normalise, channel_name=channel_name
-                        )
-                        
-                        if peak_x is not None:
-                            combined_result[f"Peak_{channel_name}_X"] = peak_x
-                            combined_result[f"Peak_{channel_name}_Y"] = peak_y
-                            combined_result[f"Gaussian_{channel_name}_A"] = popt[0]
-                            combined_result[f"Gaussian_{channel_name}_Mu"] = popt[1]
-                            combined_result[f"Gaussian_{channel_name}_Sigma"] = popt[2]
-                
+            # Add combined result if any peaks were found
+            if any(f"Peak_{ch}_X" in combined_result for ch in channel_names):
                 results.append(combined_result)
             
             integration_info = format_integration_info(integration_time, is_integration_enabled)
