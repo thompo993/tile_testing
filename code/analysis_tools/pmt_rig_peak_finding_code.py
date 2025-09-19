@@ -134,7 +134,7 @@ def load_phs_file(file_path, multi_channel=False):
         if file_ext in ['.txt', '.dat']:
 
                 data = pd.read_csv(file_path, sep="\t", header=0).dropna(axis=1, how="all")
-                print(data.head())
+                
         else:
             print(f"Unsupported file format: {file_ext}")
 
@@ -665,7 +665,7 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False,
 # ------------------------
 if __name__ == "__main__":
     # Update these paths as needed
-    folder_path = r"\\isis\shares\Detectors\Ben Thompson 2025-2026\Ben Thompson 2025-2025 Shared\Labs\Scintillating Tile Tests\ApB_software_tests_250812\codetesting_250918"
+    folder_path = r"Folder Path Here"
     custom_save_path = r"Save Path Here"
     
     # Process with multi-channel enabled

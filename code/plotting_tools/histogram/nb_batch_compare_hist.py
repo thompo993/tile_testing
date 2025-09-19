@@ -2,10 +2,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 
-# Configuration - Edit these parameters as needed
-CSV_FILE_PATH = r"\\isis\Shares\Detectors\Ben Thompson 2025-2026\Ben Thompson 2025-2025 Shared\Labs\Scintillating Tile Tests\pmt_rig_250825\spreadsheets\Histograms\comparison_histogram__between_new_og_nv_csv_250903.csv" 
-BIN_NUMBER = 14 # Change this to adjust the number of bins
-ALPHA = 0.7  # Transparency for overlapping histograms (0-1)
+
 
 def load_and_plot_histograms(csv_path, bins, alpha=0.7):
     """
@@ -219,6 +216,12 @@ def plot_with_custom_bins(csv_path, bins_list):
 
 # Main execution
 if __name__ == "__main__":
+
+# Configuration - Edit these parameters as needed
+    CSV_FILE_PATH = r"\\isis\Shares\Detectors\Ben Thompson 2025-2026\Ben Thompson 2025-2025 Shared\Labs\Scintillating Tile Tests\pmt_rig_250825\spreadsheets\Histograms\comparison_histogram__between_new_og_nv_csv_250903.csv" 
+    BIN_NUMBER = 14 # Change this to adjust the number of bins
+    ALPHA = 0.7  # Transparency for overlapping histograms (0-1)
+
     print("Peak Locations Histogram Plotter (3 Column Version)")
     print("=" * 50)
     
