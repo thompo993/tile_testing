@@ -11,14 +11,16 @@ from datetime import datetime
 warnings.filterwarnings("ignore")
 
 # ------------------------
-# Gaussian function
+# gaussian function
 # ------------------------
 def gaussian(x, A, mu, sigma):
-    """Gaussian function"""
+    """
+    standard gaussian function
+    """
     return A * np.exp(-(x - mu)**2 / (2 * sigma**2))
 
 # ------------------------
-# Read .set file for Runtime and StartDateTime
+# read .set file for Runtime and StartDateTime
 # ------------------------
 def read_set_file(data_file_path):
     """

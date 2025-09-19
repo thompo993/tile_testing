@@ -94,7 +94,7 @@ def plot_peak_scatter(file_path):
 
 if __name__ == "__main__":
     # Replace with your CSV file path
-    file_path = r"\\isis\shares\Detectors\Ben Thompson 2025-2026\Ben Thompson 2025-2025 Shared\Labs\Scintillating Tile Tests\pmt_rig_250825\spreadsheets\Scatter Plots\scatter_plot__cleaned_single_tile21_250903.csv"
+    file_path = r"File Path Here"
     
     plot_peak_scatter(file_path)
     
