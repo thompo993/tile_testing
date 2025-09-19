@@ -105,41 +105,100 @@ def parse_runtime_to_seconds(runtime_str):
         return None
 
 # ------------------------
-# Load PHS data
+# Extract channel names from header
 # ------------------------
-def load_phs_file(file_path):
+def extract_channel_names(header_line):
+    """
+    Extract channel names from the header line
+    Expected format: "Volts:Ch_A	Counts:Ch_A		Volts:Ch_C	Counts:Ch_C		Volts:Ch_A+C	Counts:Ch_A+C"
+    """
+    channel_names = []
+    parts = header_line.split('\t')
+    
+    for part in parts:
+        part = part.strip()
+        if part.startswith('Counts:'):
+            # Extract channel name after "Counts:"
+            channel_name = part.replace('Counts:', '')
+            channel_names.append(channel_name)
+    
+    return channel_names
+
+# ------------------------
+# Load PHS data (modified for multi-channel)
+# ------------------------
+def load_phs_file(file_path, multi_channel=False):
     try:
         file_ext = Path(file_path).suffix.lower()
 
         if file_ext in ['.txt', '.dat']:
-            try:
-                data = pd.read_csv(file_path, sep='\t', header=0)
-            except:
-                data = pd.read_csv(file_path, sep=r'\s+', header=0)
-        elif file_ext == '.csv':
-            data = pd.read_csv(file_path, header=0)
-        else:
-            data = pd.read_csv(file_path, sep=None, engine='python', header=0)
 
-        if data.shape[1] >= 2:
-            x = data.iloc[:, 0].values
-            y = data.iloc[:, 1].values
-            valid_mask = ~(np.isnan(x) | np.isnan(y))
-            return x[valid_mask], y[valid_mask]
+                data = pd.read_csv(file_path, sep="\t", header=0).dropna(axis=1, how="all")
+                print(data.head())
         else:
-            print(f"Warning: File {file_path} doesn't have at least 2 columns")
-            return None, None
+            print(f"Unsupported file format: {file_ext}")
+
+        if not multi_channel:
+            # Original single channel behavior
+            if data.shape[1] >= 2:
+                x = data.iloc[:, 0].values
+                y = data.iloc[:, 1].values
+                valid_mask = ~(np.isnan(x) | np.isnan(y))
+                return x[valid_mask], y[valid_mask]
+            else:
+                print(f"Warning: File {file_path} doesn't have at least 2 columns")
+                return None, None
+        else:
+            # Multi-channel behavior
+            # Extract channel names from header
+            header_line = None
+            try:
+                with open(file_path, 'r') as f:
+                    header_line = f.readline().strip()
+            except:
+                header_line = '\t'.join(data.columns)
+            
+            channel_names = extract_channel_names(header_line)
+            
+            if not channel_names:
+                print(f"Warning: No channel names found in {file_path}")
+                return None, None
+            
+            # Extract data for each channel (pairs of voltage/counts columns)
+            channels_data = {}
+            col_idx = 0
+            
+            for channel_name in channel_names:
+                if col_idx + 1 < data.shape[1]:
+                    x = data.iloc[:, col_idx].values      # Voltage column
+                    y = data.iloc[:, col_idx + 1].values  # Counts column
+                    
+                    # Remove invalid data points
+                    valid_mask = ~(np.isnan(x) | np.isnan(y))
+                    channels_data[channel_name] = {
+                        'x': x[valid_mask],
+                        'y': y[valid_mask]
+                    }
+                    col_idx += 2  # Move to next channel pair
+                else:
+                    break
+       
+            return channels_data, channel_names
+            
     except Exception as e:
         print(f"Error loading file {file_path}: {e}")
-        return None, None
+        if multi_channel:
+            return None, None
+        else:
+            return None, None
 
 # ------------------------
 # Analyze highest X peak in one file
 # ------------------------
-def analyze_largest_peak(x, y, window=21, poly=3, prominence=0.05,
+def analyze_largest_peak(x, y, window=10, poly=3, prominence=0.05,
                          show_plot=True, save_plot=False, save_path=None, file_name=None,
                          runtime=None, start_datetime=None, integration_time=None, 
-                         is_integration_enabled=None, normalise=True):
+                         is_integration_enabled=None, normalise=True, channel_name=None):
     """
     Smooths data, finds peak with highest x-value, fits Gaussian, and optionally plots/saves results.
     """
@@ -167,7 +226,7 @@ def analyze_largest_peak(x, y, window=21, poly=3, prominence=0.05,
     )
 
     if len(peaks) == 0:
-        print("No peaks detected.")
+        print(f"No peaks detected in {channel_name if channel_name else 'data'}.")
         return None, None, None, None
 
     # Select peak with highest x-value (rightmost peak)
@@ -206,6 +265,8 @@ def analyze_largest_peak(x, y, window=21, poly=3, prominence=0.05,
     info_text += f'Start DateTime: {start_datetime}\n'
     info_text += f'{normalisation_note}\n'
     info_text += integration_info
+    if channel_name:
+        info_text += f'\nChannel: {channel_name}'
     
     plt.figtext(0.76, 0.71, info_text,
                 fontsize=10, bbox=dict(boxstyle="round,pad=0.5", facecolor="lightgray", alpha=0.8))
@@ -214,7 +275,9 @@ def analyze_largest_peak(x, y, window=21, poly=3, prominence=0.05,
                 label=f"Peak X = {peak_x:.4f}")
     plt.xlabel("Voltage Output", fontsize=12)
     plt.ylabel(y_label, fontsize=12)
-    plt.title(f"Highest X Peak Detection: {file_name if file_name else 'Unknown File'}", 
+    
+    title_suffix = f" - {channel_name}" if channel_name else ""
+    plt.title(f"Highest X Peak Detection: {file_name if file_name else 'Unknown File'}{title_suffix}", 
               fontsize=14, fontweight='bold')
     plt.legend(fontsize=10)
     plt.grid(True, alpha=0.3)
@@ -231,7 +294,8 @@ def analyze_largest_peak(x, y, window=21, poly=3, prominence=0.05,
         # Create filename with timestamp
         base_name = os.path.splitext(file_name)[0]
         norm_suffix = "_normalised" if normalise and runtime_seconds else "_raw"
-        plot_filename = f"{base_name}_{timestamp}{norm_suffix}_peak_plot.png"
+        channel_suffix = f"_{channel_name}" if channel_name else ""
+        plot_filename = f"{base_name}_{timestamp}{norm_suffix}{channel_suffix}_peak_plot.png"
         full_plot_path = os.path.join(save_path, plot_filename)
         
         try:
@@ -282,14 +346,16 @@ def create_phs_overlay(spectra_data, save_path=None, normalise=True):
         y = spectrum['y']
         filename = spectrum['filename']
         runtime = spectrum['runtime']
+        channel = spectrum.get('channel', '')
         
         # Use different line styles for better distinction if many files
         linestyle = '-' if len(spectra_data) <= 10 else '-'
         alpha = 0.7 if len(spectra_data) <= 5 else 0.6
         linewidth = 1.5 if len(spectra_data) <= 10 else 1.0
         
+        label = f"{filename}" + (f" - {channel}" if channel else "")
         plt.plot(x, y, color=colors[i], alpha=alpha, linewidth=linewidth,
-                linestyle=linestyle, label=f"{filename}")
+                linestyle=linestyle, label=label)
     
     # Set labels and title
     y_label = "Counts/second" if normalise else "Counts"
@@ -342,10 +408,10 @@ def find_phs_files(folder_path):
     return sorted(files)
 
 # ------------------------
-# Process all files in folder
+# Process all files in folder (modified for multi-channel)
 # ------------------------
 def process_phs_folder(folder_path, save_results=True, save_plots=False, 
-                       custom_save_path=None, normalise=True, phs_overlay=False):
+                       custom_save_path=None, normalise=True, phs_overlay=False, multi_channel=False):
     """
     Process all PHS files in a folder.
     
@@ -363,6 +429,8 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False,
         Whether to normalise counts by runtime (default: True)
     phs_overlay : bool
         Whether to create an overlay plot of all spectra (default: False)
+    multi_channel : bool
+        Whether to process multiple channels (default: False)
     """
     files = find_phs_files(folder_path)
     if not files:
@@ -373,6 +441,7 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False,
     spectra_data = []  # Store data for overlay plot
     
     print(f"Found {len(files)} files to analyze.")
+    print(f"Multi-channel: {'ON' if multi_channel else 'OFF'}")
     print(f"normalisation: {'ON' if normalise else 'OFF'}")
     print(f"PHS Overlay: {'ON' if phs_overlay else 'OFF'}")
     print("")
@@ -388,70 +457,155 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False,
 
     for i, file in enumerate(files, 1):
         print(f"Processing {i}/{len(files)}: {Path(file).name}")
-        x, y = load_phs_file(file)
-        if x is None or y is None:
-            print(f"Skipping file: {file}")
-            continue
-
-        # Read associated .set file (now includes integration settings)
-        runtime, start_datetime, integration_time, is_integration_enabled = read_set_file(file)
-
-        # Store original data for overlay (before any processing)
-        y_original = y.copy()
-        runtime_seconds = parse_runtime_to_seconds(runtime) if runtime else None
         
-        # Apply normalisation for overlay data if requested
-        if phs_overlay:
-            if normalise and runtime_seconds and runtime_seconds > 0:
-                y_overlay = y_original / runtime_seconds
-            else:
-                y_overlay = y_original.copy()
+        if not multi_channel:
+            # Original single channel processing
+            x, y = load_phs_file(file, multi_channel=False)
+            if x is None or y is None:
+                print(f"Skipping file: {file}")
+                continue
+
+            # Read associated .set file
+            runtime, start_datetime, integration_time, is_integration_enabled = read_set_file(file)
+
+            # Store original data for overlay (before any processing)
+            y_original = y.copy()
+            runtime_seconds = parse_runtime_to_seconds(runtime) if runtime else None
             
-            spectra_data.append({
-                'x': x.copy(),
-                'y': y_overlay,
-                'filename': Path(file).name,
-                'runtime': runtime
-            })
+            # Apply normalisation for overlay data if requested
+            if phs_overlay:
+                if normalise and runtime_seconds and runtime_seconds > 0:
+                    y_overlay = y_original / runtime_seconds
+                else:
+                    y_overlay = y_original.copy()
+                
+                spectra_data.append({
+                    'x': x.copy(),
+                    'y': y_overlay,
+                    'filename': Path(file).name,
+                    'runtime': runtime
+                })
 
-        peaks, peak_x, peak_y, popt = analyze_largest_peak(
-            x, y,
-            show_plot=True,  # Always show the fit interactively
-            save_plot=save_plots,
-            save_path=save_path,
-            file_name=Path(file).name,
-            runtime=runtime,
-            start_datetime=start_datetime,
-            integration_time=integration_time,
-            is_integration_enabled=is_integration_enabled,
-            normalise=normalise
-        )
+            peaks, peak_x, peak_y, popt = analyze_largest_peak(
+                x, y,
+                show_plot=True,
+                save_plot=save_plots,
+                save_path=save_path,
+                file_name=Path(file).name,
+                runtime=runtime,
+                start_datetime=start_datetime,
+                integration_time=integration_time,
+                is_integration_enabled=is_integration_enabled,
+                normalise=normalise
+            )
 
-        if peak_x is None:
-            print(f"No peaks found in {file}")
-            continue
+            if peak_x is None:
+                print(f"No peaks found in {file}")
+                continue
 
-        # Store results with normalisation and integration info
-        result = {
-            "File": Path(file).name,
-            "Highest_X_Peak_X": peak_x,
-            "Highest_X_Peak_Y": peak_y,
-            "Gaussian_A": popt[0],
-            "Gaussian_Mu": popt[1],
-            "Gaussian_Sigma": popt[2],
-            "Runtime": runtime,
-            "StartDateTime": start_datetime,
-            "IntegrationTime": integration_time,
-            "IsIntegrationEnabled": is_integration_enabled,
-            "normalised": normalise and parse_runtime_to_seconds(runtime) is not None
-        }
-        results.append(result)
+            # Store results
+            result = {
+                "File": Path(file).name,
+                "Highest_X_Peak_X": peak_x,
+                "Highest_X_Peak_Y": peak_y,
+                "Gaussian_A": popt[0],
+                "Gaussian_Mu": popt[1],
+                "Gaussian_Sigma": popt[2],
+                "Runtime": runtime,
+                "StartDateTime": start_datetime,
+                "IntegrationTime": integration_time,
+                "IsIntegrationEnabled": is_integration_enabled,
+                "normalised": normalise and parse_runtime_to_seconds(runtime) is not None
+            }
+            results.append(result)
+            
+            # Print status
+            norm_status = " (normalised)" if result["normalised"] else " (raw)"
+            integration_info = format_integration_info(integration_time, is_integration_enabled)
+            print(f"Peak found at X = {peak_x:.5f}, Y = {peak_y:.2f}{norm_status}")
+            print(f"{integration_info}\n")
         
-        # Print status with normalisation info
-        norm_status = " (normalised)" if result["normalised"] else " (raw)"
-        integration_info = format_integration_info(integration_time, is_integration_enabled)
-        print(f"Peak found at X = {peak_x:.5f}, Y = {peak_y:.2f}{norm_status}")
-        print(f"{integration_info}\n")
+        else:
+            # Multi-channel processing
+            channels_data, channel_names = load_phs_file(file, multi_channel=True)
+            if channels_data is None or not channel_names:
+                print(f"Skipping file: {file}")
+                continue
+
+            # Read associated .set file
+            runtime, start_datetime, integration_time, is_integration_enabled = read_set_file(file)
+            runtime_seconds = parse_runtime_to_seconds(runtime) if runtime else None
+            
+            # Create base result for this file
+            combined_result = {
+                "File": Path(file).name,
+                "Runtime": runtime,
+                "StartDateTime": start_datetime,
+                "IntegrationTime": integration_time,
+                "IsIntegrationEnabled": is_integration_enabled,
+                "normalised": normalise and runtime_seconds is not None
+            }
+            
+            print(f"Processing {len(channel_names)} channels: {', '.join(channel_names)}")
+            
+            # Process each channel
+            for channel_name in channel_names:
+                if channel_name not in channels_data:
+                    continue
+                    
+                x = channels_data[channel_name]['x']
+                y = channels_data[channel_name]['y']
+                
+                # Store original data for overlay
+                if phs_overlay:
+                    y_overlay = y.copy()
+                    if normalise and runtime_seconds and runtime_seconds > 0:
+                        y_overlay = y_overlay / runtime_seconds
+                    
+                    spectra_data.append({
+                        'x': x.copy(),
+                        'y': y_overlay,
+                        'filename': Path(file).name,
+                        'runtime': runtime,
+                        'channel': channel_name
+                    })
+                
+                # Analyze peak for this channel
+                peaks, peak_x, peak_y, popt = analyze_largest_peak(
+                    x, y,
+                    show_plot=True,
+                    save_plot=save_plots,
+                    save_path=save_path,
+                    file_name=Path(file).name,
+                    runtime=runtime,
+                    start_datetime=start_datetime,
+                    integration_time=integration_time,
+                    is_integration_enabled=is_integration_enabled,
+                    normalise=normalise,
+                    channel_name=channel_name
+                )
+                
+                if peak_x is None:
+                    print(f"No peaks found in {channel_name}")
+                    continue
+                
+                # Add channel-specific data to combined result
+                combined_result[f"Peak_{channel_name}_X"] = peak_x
+                combined_result[f"Peak_{channel_name}_Y"] = peak_y
+                combined_result[f"Gaussian_{channel_name}_A"] = popt[0]
+                combined_result[f"Gaussian_{channel_name}_Mu"] = popt[1]
+                combined_result[f"Gaussian_{channel_name}_Sigma"] = popt[2]
+                
+                # Print status
+                norm_status = " (normalised)" if combined_result["normalised"] else " (raw)"
+                print(f"{channel_name}: Peak found at X = {peak_x:.5f}, Y = {peak_y:.2f}{norm_status}")
+            
+            # Add combined result if any peaks were found
+            if any(f"Peak_{ch}_X" in combined_result for ch in channel_names):
+                results.append(combined_result)
+            
+            integration_info = format_integration_info(integration_time, is_integration_enabled)
+            print(f"{integration_info}\n")
 
     # Create overlay plot if requested
     if phs_overlay and spectra_data:
@@ -463,7 +617,8 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False,
         # Generate timestamp for the CSV file as well
         timestamp = datetime.now().strftime("%y%m%d_%H%M%S")
         norm_suffix = "_normalised" if normalise else "_raw"
-        csv_filename = f"PHS_Highest_X_Peak_Summary_{timestamp}{norm_suffix}.csv"
+        multi_suffix = "_multichannel" if multi_channel else ""
+        csv_filename = f"PHS_Peak_Summary_{timestamp}{norm_suffix}{multi_suffix}.csv"
         csv_path = os.path.join(save_path, csv_filename)
         
         try:
@@ -476,15 +631,31 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False,
     if results:
         df = pd.DataFrame(results)
         print("\n" + "="*80)
-        print("SUMMARY OF HIGHEST X PEAKS:")
+        if multi_channel:
+            print("SUMMARY OF PEAKS (MULTI-CHANNEL):")
+        else:
+            print("SUMMARY OF HIGHEST X PEAKS:")
         if normalise:
             print("(normalised by runtime where available)")
         else:
             print("(Raw counts - no normalisation)")
         print("="*80)
-        display_columns = ["File", "Highest_X_Peak_X", "Highest_X_Peak_Y", "Runtime", 
-                          "StartDateTime", "IntegrationTime", "IsIntegrationEnabled", "normalised"]
-        print(df[display_columns].to_string(index=False))
+        
+        # Display appropriate columns based on mode
+        if multi_channel:
+            display_columns = ["File", "Runtime", "StartDateTime", "IntegrationTime", "IsIntegrationEnabled", "normalised"]
+            # Add channel-specific columns
+            for col in df.columns:
+                if col.startswith("Peak_") and col.endswith("_X"):
+                    display_columns.append(col)
+                    display_columns.append(col.replace("_X", "_Y"))
+        else:
+            display_columns = ["File", "Highest_X_Peak_X", "Highest_X_Peak_Y", "Runtime", 
+                              "StartDateTime", "IntegrationTime", "IsIntegrationEnabled", "normalised"]
+        
+        # Only show columns that exist in the dataframe
+        existing_columns = [col for col in display_columns if col in df.columns]
+        print(df[existing_columns].to_string(index=False))
         print("="*80)
     else:
         print("No results to display.")
@@ -494,17 +665,15 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False,
 # ------------------------
 if __name__ == "__main__":
     # Update these paths as needed
-    folder_path = r"File Path Here"
+    folder_path = r"\\isis\shares\Detectors\Ben Thompson 2025-2026\Ben Thompson 2025-2025 Shared\Labs\Scintillating Tile Tests\ApB_software_tests_250812\codetesting_250918"
     custom_save_path = r"Save Path Here"
     
-    # Process the folder with normalisation and overlay (both enabled)
+    # Process with multi-channel enabled
     process_phs_folder(folder_path, save_results=False, save_plots=False, 
-                      custom_save_path=custom_save_path, normalise=True, phs_overlay=True)
+                      custom_save_path=custom_save_path, normalise=True, 
+                      phs_overlay=True, multi_channel=True)
     
-    # To process without normalisation but with overlay:
+    # To process single channel (original behavior):
     # process_phs_folder(folder_path, save_results=True, save_plots=True, 
-    #                   custom_save_path=custom_save_path, normalise=False, phs_overlay=True)
-    
-    # To process without overlay:
-    # process_phs_folder(folder_path, save_results=True, save_plots=True, 
-    #                   custom_save_path=custom_save_path, normalise=True, phs_overlay=False)
+    #                   custom_save_path=custom_save_path, normalise=True, 
+    #                   phs_overlay=True, multi_channel=False)
