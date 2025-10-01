@@ -87,16 +87,20 @@ def read_spectrum_file(filepath):
         return None
 
 def analyze_highest_peak(x, y, window=21, poly=3, prominence=0.05, 
-                        show_plot=True, save_plot=True, save_path=None, 
+                        show_plot=True, save_plot=False, save_path=None, 
                         file_name=None, channel_name=None, voltage=None,
                         assigned_channel=None):
     """
-    Finds the peak with highest x-value (rightmost peak), fits Gaussian, and plots results.
+    Finds the peak with highest y-value (tallest peak), fits Gaussian, and plots results.
     
     Parameters:
     -----------
     assigned_channel : str
         The assigned channel name ('ch0' or 'chB') based on filename
+    save_plot : bool
+        Whether to save the plot (default: False)
+    save_path : str
+        User-specified path for saving plots (must be provided if save_plot=True)
     
     Returns:
     --------
@@ -122,12 +126,12 @@ def analyze_highest_peak(x, y, window=21, poly=3, prominence=0.05,
         print(f"No peaks detected in {channel_name if channel_name else 'data'}.")
         return None, None, None
 
-    # Select peak with highest x-value (rightmost peak)
-    highest_x_peak_idx = peaks[np.argmax(x[peaks])]
-    peak_x = x[highest_x_peak_idx]
-    peak_y = y_smooth[highest_x_peak_idx]
+    # Select peak with highest y-value (tallest peak)
+    highest_y_peak_idx = peaks[np.argmax(y_smooth[peaks])]
+    peak_x = x[highest_y_peak_idx]
+    peak_y = y_smooth[highest_y_peak_idx]
 
-    # Fit Gaussian around highest x peak
+    # Fit Gaussian around highest y peak
     fit_range = (x > peak_x - (x[-1] - x[0]) * 0.05) & (x < peak_x + (x[-1] - x[0]) * 0.05)
     x_fit = x[fit_range]
     y_fit = y_smooth[fit_range]
@@ -174,20 +178,23 @@ def analyze_highest_peak(x, y, window=21, poly=3, prominence=0.05,
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
 
-    # Save plot if requested
-    if save_plot and save_path and file_name:
-        os.makedirs(save_path, exist_ok=True)
-        timestamp = datetime.now().strftime("%y%m%d_%H%M%S")
-        base_name = os.path.splitext(file_name)[0]
-        channel_suffix = f"_{assigned_channel}" if assigned_channel else (f"_{channel_name}" if channel_name else "")
-        plot_filename = f"{base_name}_{timestamp}{channel_suffix}_highest_peak.png"
-        full_plot_path = os.path.join(save_path, plot_filename)
-        
-        try:
-            plt.savefig(full_plot_path, dpi=300, bbox_inches='tight')
-            print(f"Plot saved to: {full_plot_path}")
-        except Exception as e:
-            print(f"Error saving plot: {e}")
+    # Save plot only if explicitly requested and path is provided
+    if save_plot:
+        if save_path is None:
+            print("Warning: save_plot=True but no save_path provided. Plot not saved.")
+        else:
+            os.makedirs(save_path, exist_ok=True)
+            timestamp = datetime.now().strftime("%y%m%d_%H%M%S")
+            base_name = os.path.splitext(file_name)[0] if file_name else "spectrum"
+            channel_suffix = f"_{assigned_channel}" if assigned_channel else (f"_{channel_name}" if channel_name else "")
+            plot_filename = f"{base_name}_{timestamp}{channel_suffix}_highest_peak.png"
+            full_plot_path = os.path.join(save_path, plot_filename)
+            
+            try:
+                plt.savefig(full_plot_path, dpi=300, bbox_inches='tight')
+                print(f"Plot saved to: {full_plot_path}")
+            except Exception as e:
+                print(f"Error saving plot: {e}")
 
     if show_plot:
         plt.show()
@@ -261,8 +268,18 @@ def plot_voltage_vs_peak_position(voltage_data, output_directory):
     plt.show()
     plt.close()
 
-def analyze_spectra_directory():
-    """Main function to analyze all .dat files in selected directory"""
+def analyze_spectra_directory(save_individual_plots=False, individual_plot_path=None):
+    """
+    Main function to analyze all .dat files in selected directory
+    
+    Parameters:
+    -----------
+    save_individual_plots : bool
+        Whether to save individual peak fitting plots (default: False)
+    individual_plot_path : str
+        User-specified path for saving individual plots (required if save_individual_plots=True)
+        Format: r"your\path\here"
+    """
     
     input_directory = select_directory()
     if not input_directory:
@@ -277,7 +294,13 @@ def analyze_spectra_directory():
         return
     
     print(f"Found {len(dat_files)} .dat files")
-    print(f"Saving all plots to: {output_directory}")
+    print(f"Saving summary plot to: {output_directory}")
+    
+    if save_individual_plots:
+        if individual_plot_path:
+            print(f"Saving individual plots to: {individual_plot_path}")
+        else:
+            print("Warning: save_individual_plots=True but no path provided. Individual plots will not be saved.")
     
     voltage_peak_data = []
     
@@ -314,8 +337,8 @@ def analyze_spectra_directory():
                 poly=3,
                 prominence=0.05,
                 show_plot=True,
-                save_plot=True,
-                save_path=output_directory,
+                save_plot=save_individual_plots,
+                save_path=individual_plot_path,
                 file_name=filename,
                 channel_name=channel_name,
                 voltage=voltage,
@@ -340,10 +363,24 @@ def analyze_spectra_directory():
     else:
         print("No data collected for summary plot")
     
-    print(f"\nAnalysis complete! All plots saved to: {output_directory}")
+    print(f"\nAnalysis complete! Summary plot saved to: {output_directory}")
 
-def analyze_single_file(filepath, show_plots=True):
-    """Analyze a single .dat file"""
+def analyze_single_file(filepath, show_plots=True, save_plots=False, save_path=None):
+    """
+    Analyze a single .dat file
+    
+    Parameters:
+    -----------
+    filepath : str
+        Path to the .dat file
+    show_plots : bool
+        Whether to display plots (default: True)
+    save_plots : bool
+        Whether to save plots (default: False)
+    save_path : str
+        User-specified path for saving plots (required if save_plots=True)
+        Format: r"your\path\here"
+    """
     
     filename = os.path.basename(filepath)
     print(f"Processing {filename}...")
@@ -361,8 +398,6 @@ def analyze_single_file(filepath, show_plots=True):
         print("Failed to read file")
         return
     
-    output_dir = get_output_directory()
-    
     for channel_name, (volts, counts) in channels_data.items():
         print(f"\nAnalyzing {channel_name} (assigned to {assigned_channel})...")
         
@@ -376,8 +411,8 @@ def analyze_single_file(filepath, show_plots=True):
             poly=3,
             prominence=0.05,
             show_plot=show_plots,
-            save_plot=True,
-            save_path=output_dir,
+            save_plot=save_plots,
+            save_path=save_path,
             file_name=filename,
             channel_name=channel_name,
             voltage=voltage,
@@ -389,7 +424,14 @@ def analyze_single_file(filepath, show_plots=True):
             print(f"Gaussian fit parameters: amplitude={popt[0]:.2f}, mean={popt[1]:.4f}, std={popt[2]:.4f}")
 
 if __name__ == "__main__":
-    analyze_spectra_directory()
+    # Run directory analysis without saving individual plots
+    #analyze_spectra_directory()
     
-    # For single file analysis:
+    # To save individual plots, use:
+     analyze_spectra_directory(save_individual_plots=False, individual_plot_path=r"C:\your\path\here")
+    
+    # For single file analysis without saving:
     # analyze_single_file("path/to/your/file.dat", show_plots=True)
+    
+    # For single file analysis with saving:
+    # analyze_single_file("path/to/your/file.dat", show_plots=True, save_plots=True, save_path=r"C:\your\path\here")
