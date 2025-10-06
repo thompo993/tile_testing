@@ -35,6 +35,8 @@ def read_set_file(data_file_path):
     is_integration_enabled = None
     division_1 = None
     division_3 = None
+    trig_1 = None
+    trig_3 = None 
     
     if set_file_path.exists():
         try:
@@ -53,6 +55,11 @@ def read_set_file(data_file_path):
                         division_3 = line.split('=')[1]
                     elif line.startswith('IsIntegrationEnabled='):
                         is_integration_enabled = line.split('=')[1].lower() == 'true'
+                    elif line.startswith('TriggerLevel[1]'):
+                        trig_1 = line.split('=')[1]
+                    elif line.startswith('TriggerLevel[3]'):
+                        trig_3 = line.split('=')[1]
+                    
                     
         except Exception as e:
             print(f"Error reading .set file {set_file_path}: {e}")
@@ -65,7 +72,7 @@ def read_set_file(data_file_path):
     division = float(division_1)
 
 
-    return runtime, start_datetime, integration_time, is_integration_enabled, division
+    return runtime, start_datetime, integration_time, is_integration_enabled, division, trig_1, trig_3
 
 
 
@@ -215,7 +222,7 @@ def load_phs_file(file_path, multi_channel=False):
 def analyze_largest_peak(x, y, window=10, poly=3, prominence=0.05,
                          show_plot=True, save_plot=False, save_path=None, file_name=None,
                          runtime=None, start_datetime=None, integration_time=None, 
-                         is_integration_enabled=None, normalise=True, channel_name=None, division = 1):
+                         is_integration_enabled=None, normalise=True, channel_name=None, division = 1, trig_1=None, trig_3=None):
     """
     Smooths data, finds peak with highest x-value, fits Gaussian, and optionally plots/saves results.
     """
@@ -281,16 +288,18 @@ def analyze_largest_peak(x, y, window=10, poly=3, prominence=0.05,
     
     # Create info text for the plot with integration information
     integration_info = format_integration_info(integration_time, is_integration_enabled)
-    info_text = f'Runtime: {runtime}\n'
+    info_text = f'Start DateTime: {start_datetime}\n'
+    info_text += f'Runtime: {runtime}\n'
     info_text += f'mV Per Division {division*100}\n'
     info_text += f'{normalisation_note_runtime}\n'
-    info_text += f'Start DateTime: {start_datetime}\n'
+    info_text += f'Trigger Level Ch1: {trig_1} mV\n'
+    info_text += f'Trigger Level Ch3: {trig_3} mV\n'
     info_text += integration_info
    
     if channel_name:
         info_text += f'\nChannel: {channel_name}'
     
-    plt.figtext(0.76, 0.71, info_text,
+    plt.figtext(0.76, 0.63, info_text,
                 fontsize=10, bbox=dict(boxstyle="round,pad=0.5", facecolor="lightgray", alpha=0.8))
     
     plt.axvline(peak_x, color="purple", linestyle="--", linewidth=2, 
@@ -488,7 +497,7 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False,
                 continue
 
             # Read associated .set file
-            runtime, start_datetime, integration_time, is_integration_enabled, divison = read_set_file(file)
+            runtime, start_datetime, integration_time, is_integration_enabled, divison,trig_1,trig_3 = read_set_file(file)
 
             # Store original data for overlay (before any processing)
             y_original = y.copy()
@@ -519,7 +528,8 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False,
                 integration_time=integration_time,
                 is_integration_enabled=is_integration_enabled,
                 normalise=normalise,
-                division=divison
+                division=divison,
+                trig_1=trig_1, trig_3=trig_3    
             )
 
             if peak_x is None:
@@ -556,7 +566,7 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False,
                 continue
 
             # Read associated .set file
-            runtime, start_datetime, integration_time, is_integration_enabled, divison = read_set_file(file)
+            runtime, start_datetime, integration_time, is_integration_enabled, divison,trig_1,trig_3 = read_set_file(file)
             runtime_seconds = parse_runtime_to_seconds(runtime) if runtime else None
             
             # Create base result for this file
@@ -606,7 +616,9 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False,
                     is_integration_enabled=is_integration_enabled,
                     normalise=normalise,
                     channel_name=channel_name,
-                    division=divison
+                    division=divison,
+                    trig_1=trig_1,
+                    trig_3=trig_3
                 )
                 
                 if peak_x is None:
