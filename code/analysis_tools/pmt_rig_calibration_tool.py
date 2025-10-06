@@ -42,53 +42,78 @@ def extract_voltage_from_filename(filename):
 
 def determine_channel_from_filename(filename):
     """
-    Determine if file belongs to ch0 or chB based on filename patterns.
-    Returns 'ch0' or 'chB'
+    Determine if file belongs to ch0 or ch1 based on filename patterns.
+    Returns 'ch0' or 'ch1'
     """
     filename_lower = filename.lower()
+    name_without_ext = os.path.splitext(filename_lower)[0]
     
-    # Check for explicit channel indicators
-    if 'ch0' in filename_lower or 'channel0' in filename_lower or '_0_' in filename_lower:
+    if 'ch1' in filename_lower or 'channel1' in filename_lower or 'channel_1' in filename_lower:
+        return 'ch1'
+    elif 'ch0' in filename_lower or 'channel0' in filename_lower or 'channel_0' in filename_lower:
         return 'ch0'
-    elif 'chb' in filename_lower or 'channelb' in filename_lower or '_b_' in filename_lower:
-        return 'chB'
     
-    # Default assignment if no clear indicator
-    return 'ch0'  # Default to ch0
+    if re.search(r'_1[_\.]', name_without_ext) or name_without_ext.endswith('_1'):
+        return 'ch1'
+    elif re.search(r'_0[_\.]', name_without_ext) or name_without_ext.endswith('_0'):
+        return 'ch0'
+    
+    match = re.search(r'(\d)$', name_without_ext)
+    if match:
+        digit = match.group(1)
+        if digit == '1':
+            return 'ch1'
+        elif digit == '0':
+            return 'ch0'
+    
+    print(f"  DEBUG: Could not determine channel for '{filename}'")
+    return 'unknown'
 
 def read_spectrum_file(filepath):
-    """Read pulse height spectrum data from .dat file - Ch_B only"""
+    """Read pulse height spectrum data from .dat file - supports Ch_B and Ch_D"""
     try:
         df = pd.read_csv(filepath, sep='\t', header=0)
         df.columns = df.columns.str.strip()
         
-        # Only look for Ch_B channel
-        volt_col = 'Volts:Ch_B'
-        count_col = 'Counts:Ch_B'
+        print(f"  Available columns: {df.columns.tolist()}")
         
-        if volt_col in df.columns and count_col in df.columns:
-            volts = df[volt_col].values
-            counts = df[count_col].values
-            return volts, counts
-        else:
-            print(f"Warning: Ch_B columns not found in {filepath}")
-            print(f"Available columns: {df.columns.tolist()}")
-            return None, None
+        # Dictionary to store channel data
+        channel_data = {}
+        
+        # Check for Ch_B
+        if 'Volts:Ch_B' in df.columns and 'Counts:Ch_B' in df.columns:
+            channel_data['Ch_B'] = (df['Volts:Ch_B'].values, df['Counts:Ch_B'].values)
+            print(f"  Found Ch_B data")
+        
+        # Check for Ch_D
+        if 'Volts:Ch_D' in df.columns and 'Counts:Ch_D' in df.columns:
+            channel_data['Ch_D'] = (df['Volts:Ch_D'].values, df['Counts:Ch_D'].values)
+            print(f"  Found Ch_D data")
+        
+        # Check for Ch_B+D (summed channel)
+        if 'Volts:Ch_B+D' in df.columns and 'Counts:Ch_B+D' in df.columns:
+            channel_data['Ch_B+D'] = (df['Volts:Ch_B+D'].values, df['Counts:Ch_B+D'].values)
+            print(f"  Found Ch_B+D data")
+        
+        return channel_data
             
     except Exception as e:
         print(f"Error reading {filepath}: {e}")
-        return None, None
+        return {}
 
 def analyze_highest_peak(x, y, window=21, poly=3, prominence=0.05, 
                         show_plot=True, save_plot=False, save_path=None, 
-                        file_name=None, voltage=None, assigned_channel=None):
+                        file_name=None, voltage=None, assigned_channel=None,
+                        physical_channel=None):
     """
     Finds the peak with highest y-value (tallest peak), fits Gaussian, and plots results.
     
     Parameters:
     -----------
     assigned_channel : str
-        The assigned channel name ('ch0' or 'chB') based on filename
+        The assigned channel name ('ch0' or 'ch1') based on filename
+    physical_channel : str
+        The physical channel name ('Ch_B', 'Ch_D', etc.)
     save_plot : bool
         Whether to save the plot (default: False)
     save_path : str
@@ -104,6 +129,11 @@ def analyze_highest_peak(x, y, window=21, poly=3, prominence=0.05,
         Gaussian fit parameters [amplitude, mean, std]
     """
     
+    # Check if there's any data
+    if np.sum(y) == 0:
+        print(f"No counts found in {physical_channel}, skipping...")
+        return None, None, None
+    
     # Smooth data
     y_smooth = savgol_filter(y, window_length=window, polyorder=poly)
 
@@ -115,7 +145,7 @@ def analyze_highest_peak(x, y, window=21, poly=3, prominence=0.05,
     )
 
     if len(peaks) == 0:
-        print(f"No peaks detected in Ch_B.")
+        print(f"No peaks detected in {physical_channel}.")
         return None, None, None
 
     # Select peak with highest y-value (tallest peak)
@@ -151,7 +181,7 @@ def analyze_highest_peak(x, y, window=21, poly=3, prominence=0.05,
         info_text = f'Applied Voltage: {voltage}V\n'
         info_text += f'Peak Position: {peak_x:.4f}V\n'
         info_text += f'Peak Height: {peak_y:.1f} counts\n'
-        info_text += f'Channel: Ch_B\n'
+        info_text += f'Physical Channel: {physical_channel}\n'
         if assigned_channel:
             info_text += f'Assigned Channel: {assigned_channel}'
         
@@ -163,7 +193,7 @@ def analyze_highest_peak(x, y, window=21, poly=3, prominence=0.05,
     plt.ylabel("Counts", fontsize=12)
     
     title_suffix = f" - {assigned_channel}" if assigned_channel else ""
-    plt.title(f"Highest Peak Detection (Ch_B): {file_name if file_name else 'Unknown File'}{title_suffix}", 
+    plt.title(f"Highest Peak Detection ({physical_channel}): {file_name if file_name else 'Unknown File'}{title_suffix}", 
               fontsize=14, fontweight='bold')
     plt.legend(fontsize=10)
     plt.grid(True, alpha=0.3)
@@ -178,7 +208,7 @@ def analyze_highest_peak(x, y, window=21, poly=3, prominence=0.05,
             timestamp = datetime.now().strftime("%y%m%d_%H%M%S")
             base_name = os.path.splitext(file_name)[0] if file_name else "spectrum"
             channel_suffix = f"_{assigned_channel}" if assigned_channel else ""
-            plot_filename = f"{base_name}_{timestamp}{channel_suffix}_ChB_highest_peak.png"
+            plot_filename = f"{base_name}_{timestamp}{channel_suffix}_{physical_channel}_highest_peak.png"
             full_plot_path = os.path.join(save_path, plot_filename)
             
             try:
@@ -194,19 +224,40 @@ def analyze_highest_peak(x, y, window=21, poly=3, prominence=0.05,
 
     return peak_x, peak_y, popt
 
-def plot_voltage_vs_peak_position(voltage_data, output_directory):
-    """Plot applied voltage vs highest peak position with best fit lines"""
+def plot_voltage_vs_peak_position(voltage_data, output_directory, physical_channel='Ch_B'):
+    """
+    Plot applied voltage vs highest peak position - COMBINED plot for ch0 and ch1
     
-    # Separate data by assigned channel (ch0 and chB)
-    ch0_voltages = [v for v, ch, _ in voltage_data if ch == 'ch0']
-    ch0_peaks = [p for v, ch, p in voltage_data if ch == 'ch0']
+    Parameters:
+    -----------
+    voltage_data : list of tuples
+        List of (voltage, assigned_channel, physical_channel, peak_position)
+    output_directory : str
+        Directory to save plots
+    physical_channel : str
+        The physical channel to plot (e.g., 'Ch_B', 'Ch_D')
+    """
     
-    chB_voltages = [v for v, ch, _ in voltage_data if ch == 'chB']
-    chB_peaks = [p for v, ch, p in voltage_data if ch == 'chB']
+    # Filter data for the specified physical channel
+    filtered_data = [(v, ch, p) for v, ch, phys_ch, p in voltage_data if phys_ch == physical_channel]
     
-    plt.figure(figsize=(10, 6))
+    if not filtered_data:
+        print(f"No data found for {physical_channel}")
+        return
     
-    # Plot ch0 data
+    # Separate data by assigned channel (ch0 and ch1)
+    ch0_voltages = [v for v, ch, _ in filtered_data if ch == 'ch0']
+    ch0_peaks = [p for v, ch, p in filtered_data if ch == 'ch0']
+    
+    ch1_voltages = [v for v, ch, _ in filtered_data if ch == 'ch1']
+    ch1_peaks = [p for v, ch, p in filtered_data if ch == 'ch1']
+    
+    current_datetime = datetime.now().strftime("%Y%m%d_%H%M%S")
+    
+    # Create COMBINED plot
+    plt.figure(figsize=(12, 8))
+    
+    # Plot ch0 data if available
     if ch0_voltages:
         ch0_voltages = np.array(ch0_voltages)
         ch0_peaks = np.array(ch0_peaks)
@@ -218,50 +269,64 @@ def plot_voltage_vs_peak_position(voltage_data, output_directory):
         fit_0 = np.polyfit(ch0_voltages, ch0_peaks, 1)
         line_0 = np.poly1d(fit_0)
         
-        plt.scatter(ch0_voltages, ch0_peaks, color='blue', label='ch0', s=50)
-        plt.plot(ch0_voltages, line_0(ch0_voltages), color='blue', linestyle='--', 
-                label=f'ch0 Best fit (slope: {fit_0[0]:.6f})')
+        plt.scatter(ch0_voltages, ch0_peaks, color='blue', s=100, alpha=0.7, 
+                   edgecolors='black', linewidth=1.5, label='ch0 data')
+        plt.plot(ch0_voltages, line_0(ch0_voltages), color='darkblue', linestyle='--', linewidth=2,
+                label=f'ch0 fit: y = {fit_0[0]:.6f}x + {fit_0[1]:.6f}')
         
-        print(f"ch0 - Slope: {fit_0[0]:.6f}, Intercept: {fit_0[1]:.6f}")
+        print(f"\n{physical_channel} - ch0 - Slope: {fit_0[0]:.6f}, Intercept: {fit_0[1]:.6f}")
+    else:
+        print(f"\n{physical_channel} - No ch0 data found.")
     
-    # Plot chB data
-    if chB_voltages:
-        chB_voltages = np.array(chB_voltages)
-        chB_peaks = np.array(chB_peaks)
+    # Plot ch1 data if available
+    if ch1_voltages:
+        ch1_voltages = np.array(ch1_voltages)
+        ch1_peaks = np.array(ch1_peaks)
         
-        sort_idx_B = np.argsort(chB_voltages)
-        chB_voltages = chB_voltages[sort_idx_B]
-        chB_peaks = chB_peaks[sort_idx_B]
+        sort_idx_1 = np.argsort(ch1_voltages)
+        ch1_voltages = ch1_voltages[sort_idx_1]
+        ch1_peaks = ch1_peaks[sort_idx_1]
         
-        fit_B = np.polyfit(chB_voltages, chB_peaks, 1)
-        line_B = np.poly1d(fit_B)
+        fit_1 = np.polyfit(ch1_voltages, ch1_peaks, 1)
+        line_1 = np.poly1d(fit_1)
         
-        plt.scatter(chB_voltages, chB_peaks, color='red', label='chB', s=50)
-        plt.plot(chB_voltages, line_B(chB_voltages), color='red', linestyle='--', 
-                label=f'chB Best fit (slope: {fit_B[0]:.6f})')
+        plt.scatter(ch1_voltages, ch1_peaks, color='red', s=100, alpha=0.7, 
+                   edgecolors='black', linewidth=1.5, label='ch1 data')
+        plt.plot(ch1_voltages, line_1(ch1_voltages), color='darkred', linestyle='--', linewidth=2,
+                label=f'ch1 fit: y = {fit_1[0]:.6f}x + {fit_1[1]:.6f}')
         
-        print(f"chB - Slope: {fit_B[0]:.6f}, Intercept: {fit_B[1]:.6f}")
+        print(f"\n{physical_channel} - ch1 - Slope: {fit_1[0]:.6f}, Intercept: {fit_1[1]:.6f}")
+        
+        # Calculate gain matching information if both channels present
+        if ch0_voltages.size > 0:
+            ratio = fit_1[0] / fit_0[0]
+            print(f"\n{physical_channel} - Gain Ratio (ch1/ch0): {ratio:.4f}")
+            print(f"{physical_channel} - Gain difference: {((ratio - 1) * 100):.2f}%")
+    else:
+        print(f"\n{physical_channel} - No ch1 data found.")
     
-    plt.title('Applied Voltage vs Highest Peak Position (Ch_B Only)')
-    plt.xlabel('Applied Voltage (V)')
-    plt.ylabel('Peak Position (V)')
-    plt.legend()
+    # Finalize combined plot
+    plt.title(f'Applied Voltage vs Highest Peak Position - {physical_channel} - Gain Matching', 
+              fontsize=14, fontweight='bold')
+    plt.xlabel('Applied Voltage (V)', fontsize=12)
+    plt.ylabel('Peak Position (V)', fontsize=12)
+    plt.legend(fontsize=11, loc='best')
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
     
-    # Save summary plot
-    current_datetime = datetime.now().strftime("%Y%m%d_%H%M%S")
-    summary_filename = f"voltage_vs_peak_position_ChB_{current_datetime}.png"
+    # Save combined plot
+    summary_filename = f"voltage_vs_peak_position_{physical_channel}_combined_{current_datetime}.png"
     summary_path = os.path.join(output_directory, summary_filename)
     plt.savefig(summary_path, dpi=300, bbox_inches='tight')
-    print(f"Saved summary plot: {summary_filename}")
+    print(f"\nSaved combined plot: {summary_filename}")
     
     plt.show()
     plt.close()
 
-def analyze_spectra_directory(save_individual_plots=False, individual_plot_path=None):
+def analyze_spectra_directory(save_individual_plots=False, individual_plot_path=None, 
+                             target_channels=['Ch_B']):
     """
-    Main function to analyze all .dat files in selected directory (Ch_B only)
+    Main function to analyze all .dat files in selected directory
     
     Parameters:
     -----------
@@ -269,7 +334,9 @@ def analyze_spectra_directory(save_individual_plots=False, individual_plot_path=
         Whether to save individual peak fitting plots (default: False)
     individual_plot_path : str
         User-specified path for saving individual plots (required if save_individual_plots=True)
-        Format: r"your\path\here"
+    target_channels : list of str
+        List of physical channels to analyze (e.g., ['Ch_B', 'Ch_D'])
+        Default: ['Ch_B']
     """
     
     input_directory = select_directory()
@@ -285,8 +352,16 @@ def analyze_spectra_directory(save_individual_plots=False, individual_plot_path=
         return
     
     print(f"Found {len(dat_files)} .dat files")
-    print(f"Analyzing Ch_B only - 1 plot per file")
-    print(f"Saving summary plot to: {output_directory}")
+    print(f"Target channels for analysis: {target_channels}")
+    print(f"Saving summary plots to: {output_directory}")
+    
+    # Debug: Print all filenames and their channel assignments
+    print("\n=== CHANNEL ASSIGNMENT DEBUG ===")
+    for filepath in dat_files:
+        filename = os.path.basename(filepath)
+        assigned_channel = determine_channel_from_filename(filename)
+        print(f"{filename} -> {assigned_channel}")
+    print("=== END DEBUG ===\n")
     
     if save_individual_plots:
         if individual_plot_path:
@@ -294,6 +369,7 @@ def analyze_spectra_directory(save_individual_plots=False, individual_plot_path=
         else:
             print("Warning: save_individual_plots=True but no path provided. Individual plots will not be saved.")
     
+    # Store data as: (voltage, assigned_channel, physical_channel, peak_position)
     voltage_peak_data = []
     
     for filepath in dat_files:
@@ -304,60 +380,74 @@ def analyze_spectra_directory(save_individual_plots=False, individual_plot_path=
         assigned_channel = determine_channel_from_filename(filename)
         print(f"Assigned to: {assigned_channel}")
         
+        if assigned_channel == 'unknown':
+            print(f"Warning: Could not determine channel (ch0/ch1) from filename. Skipping.")
+            continue
+        
         voltage = extract_voltage_from_filename(filename)
         if voltage is None:
             print(f"Warning: Could not extract voltage from filename {filename}")
             continue
         
         print(f"Extracted voltage: {voltage}")
-        volts, counts = read_spectrum_file(filepath)
+        channel_data = read_spectrum_file(filepath)
         
-        if volts is None or counts is None:
+        if not channel_data:
             continue
         
-        # Analyze only Ch_B
-        print(f"Analyzing Ch_B (assigned to {assigned_channel})...")
-        
-        if np.sum(counts) == 0:
-            print(f"No counts found in Ch_B, skipping...")
-            continue
-        
-        peak_x, peak_y, popt = analyze_highest_peak(
-            volts, counts,
-            window=21,
-            poly=3,
-            prominence=0.05,
-            show_plot=True,
-            save_plot=save_individual_plots,
-            save_path=individual_plot_path,
-            file_name=filename,
-            voltage=voltage,
-            assigned_channel=assigned_channel
-        )
-        
-        if peak_x is not None:
-            print(f"Highest peak found at: {peak_x:.4f}V with height {peak_y:.1f} counts")
-            # Store with assigned channel (ch0 or chB)
-            voltage_peak_data.append((voltage, assigned_channel, peak_x))
-        else:
-            print(f"No peaks found in Ch_B")
+        # Analyze each target channel
+        for physical_channel in target_channels:
+            if physical_channel not in channel_data:
+                print(f"  {physical_channel} not found in file, skipping...")
+                continue
+            
+            volts, counts = channel_data[physical_channel]
+            print(f"  Analyzing {physical_channel} (assigned to {assigned_channel})...")
+            
+            peak_x, peak_y, popt = analyze_highest_peak(
+                volts, counts,
+                window=21,
+                poly=3,
+                prominence=0.05,
+                show_plot=False,  # Don't show individual plots by default
+                save_plot=save_individual_plots,
+                save_path=individual_plot_path,
+                file_name=filename,
+                voltage=voltage,
+                assigned_channel=assigned_channel,
+                physical_channel=physical_channel
+            )
+            
+            if peak_x is not None:
+                print(f"  {physical_channel}: Highest peak found at {peak_x:.4f}V with height {peak_y:.1f} counts")
+                # Store with both assigned channel and physical channel
+                voltage_peak_data.append((voltage, assigned_channel, physical_channel, peak_x))
+            else:
+                print(f"  {physical_channel}: No peaks found")
     
-    # Create summary plot
+    # Create summary plots for each physical channel
     if voltage_peak_data:
-        print(f"\nCreating summary plot with {len(voltage_peak_data)} data points...")
-        plot_voltage_vs_peak_position(voltage_peak_data, output_directory)
+        print(f"\nCreating summary plots with {len(voltage_peak_data)} total data points...")
+        
+        # Get unique physical channels from the data
+        unique_physical_channels = list(set([phys_ch for _, _, phys_ch, _ in voltage_peak_data]))
+        
+        for physical_channel in unique_physical_channels:
+            print(f"\nCreating plot for {physical_channel}...")
+            plot_voltage_vs_peak_position(voltage_peak_data, output_directory, physical_channel)
         
         print("\nSummary of collected data:")
-        for voltage, channel, peak_pos in voltage_peak_data:
-            print(f"Voltage: {voltage}V, Channel: {channel}, Peak Position: {peak_pos:.4f}V")
+        for voltage, assigned_ch, physical_ch, peak_pos in voltage_peak_data:
+            print(f"Voltage: {voltage}V, Assigned: {assigned_ch}, Physical: {physical_ch}, Peak: {peak_pos:.4f}V")
     else:
-        print("No data collected for summary plot")
+        print("No data collected for summary plots")
     
-    print(f"\nAnalysis complete! Summary plot saved to: {output_directory}")
+    print(f"\nAnalysis complete! Summary plots saved to: {output_directory}")
 
-def analyze_single_file(filepath, show_plots=True, save_plots=False, save_path=None):
+def analyze_single_file(filepath, show_plots=True, save_plots=False, save_path=None,
+                       target_channels=['Ch_B']):
     """
-    Analyze a single .dat file (Ch_B only)
+    Analyze a single .dat file
     
     Parameters:
     -----------
@@ -369,7 +459,8 @@ def analyze_single_file(filepath, show_plots=True, save_plots=False, save_path=N
         Whether to save plots (default: False)
     save_path : str
         User-specified path for saving plots (required if save_plots=True)
-        Format: r"your\path\here"
+    target_channels : list of str
+        List of physical channels to analyze (e.g., ['Ch_B', 'Ch_D'])
     """
     
     filename = os.path.basename(filepath)
@@ -382,44 +473,55 @@ def analyze_single_file(filepath, show_plots=True, save_plots=False, save_path=N
     voltage = extract_voltage_from_filename(filename)
     print(f"Extracted voltage: {voltage}")
     
-    volts, counts = read_spectrum_file(filepath)
+    channel_data = read_spectrum_file(filepath)
     
-    if volts is None or counts is None:
-        print("Failed to read Ch_B from file")
+    if not channel_data:
+        print("Failed to read channels from file")
         return
     
-    print(f"Analyzing Ch_B (assigned to {assigned_channel})...")
-    
-    if np.sum(counts) == 0:
-        print(f"No counts found in Ch_B, skipping...")
-        return
-    
-    peak_x, peak_y, popt = analyze_highest_peak(
-        volts, counts,
-        window=21,
-        poly=3,
-        prominence=0.05,
-        show_plot=show_plots,
-        save_plot=save_plots,
-        save_path=save_path,
-        file_name=filename,
-        voltage=voltage,
-        assigned_channel=assigned_channel
-    )
-    
-    if peak_x is not None:
-        print(f"Highest peak found at: {peak_x:.4f}V with height {peak_y:.1f} counts")
-        print(f"Gaussian fit parameters: amplitude={popt[0]:.2f}, mean={popt[1]:.4f}, std={popt[2]:.4f}")
+    # Analyze each target channel
+    for physical_channel in target_channels:
+        if physical_channel not in channel_data:
+            print(f"{physical_channel} not found in file, skipping...")
+            continue
+        
+        volts, counts = channel_data[physical_channel]
+        print(f"\nAnalyzing {physical_channel} (assigned to {assigned_channel})...")
+        
+        peak_x, peak_y, popt = analyze_highest_peak(
+            volts, counts,
+            window=21,
+            poly=3,
+            prominence=0.05,
+            show_plot=show_plots,
+            save_plot=save_plots,
+            save_path=save_path,
+            file_name=filename,
+            voltage=voltage,
+            assigned_channel=assigned_channel,
+            physical_channel=physical_channel
+        )
+        
+        if peak_x is not None:
+            print(f"{physical_channel}: Highest peak found at {peak_x:.4f}V with height {peak_y:.1f} counts")
+            print(f"Gaussian fit parameters: amplitude={popt[0]:.2f}, mean={popt[1]:.4f}, std={popt[2]:.4f}")
 
 if __name__ == "__main__":
-    # Run directory analysis without saving individual plots
-    #analyze_spectra_directory()
+    # Analyze directory with Ch_B only (original behavior)
+    # analyze_spectra_directory(target_channels=['Ch_B'])
     
-    # To save individual plots, use:
-     analyze_spectra_directory(save_individual_plots=False, individual_plot_path=r"C:\your\path\here")
+    # Analyze directory with both Ch_B and Ch_D (creates separate plots for each)
+    analyze_spectra_directory(
+        save_individual_plots=False, 
+        individual_plot_path=r"\\isis\shares\Detectors\Lisa Malliolio 2025\PMT_calibration_20251001\ch0_n_ch1_for_bens_code",
+        target_channels=['Ch_B', 'Ch_D']  # Specify which physical channels to analyze
+    )
     
-    # For single file analysis without saving:
-    # analyze_single_file("path/to/your/file.dat", show_plots=True)
+    # For Ch_B+D summed channel:
+    # analyze_spectra_directory(target_channels=['Ch_B+D'])
     
-    # For single file analysis with saving:
-    # analyze_single_file("path/to/your/file.dat", show_plots=True, save_plots=True, save_path=r"C:\your\path\here")
+    # For all channels:
+    # analyze_spectra_directory(target_channels=['Ch_B', 'Ch_D', 'Ch_B+D'])
+    
+    # For single file analysis:
+    # analyze_single_file("path/to/your/file.dat", show_plots=True, target_channels=['Ch_B', 'Ch_D'])
