@@ -299,8 +299,7 @@ def analyze_largest_peak(x, y, window=10, poly=3, prominence=0.05,
     if channel_name:
         info_text += f'\nChannel: {channel_name}'
     
-    plt.figtext(0.76, 0.63, info_text,
-                fontsize=10, bbox=dict(boxstyle="round,pad=0.5", facecolor="lightgray", alpha=0.8))
+    plt.figtext(0.76, 0.63, info_text, fontsize=10, bbox=dict(boxstyle="round,pad=0.5", facecolor="lightgray", alpha=0.8))
     
     plt.axvline(peak_x, color="purple", linestyle="--", linewidth=2, 
                 label=f"Peak X = {peak_x:.4f}")
@@ -701,7 +700,7 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False,
 # ------------------------
 if __name__ == "__main__":
     # Update these paths as needed
-    folder_path = r"\\isis\Shares\Detectors\Lisa Malliolio 2025\PMT_calibration_20251001\batch1_43mmtiles_251003\roughpass"
+    folder_path = r"\\isis\Shares\Detectors\Lisa Malliolio 2025\PMT_calibration_20251001\batch1_43mmtiles_251003\finepass"
     custom_save_path = r"Save Path Here"
     
     # Process with multi-channel enabled
