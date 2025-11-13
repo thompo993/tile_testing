@@ -66,15 +66,20 @@ def read_set_file(data_file_path):
     else:
         print(f"No .set file found for {Path(data_file_path).name}")
     
-    # assert that divisions are the same: 
-    assert division_1 == division_3, "Divisions are not equal"
-    #making variable names easier to read, making it an float
-    division = float(division_1)
-
+    # Check if divisions are present before asserting equality
+    if division_1 is not None and division_3 is not None:
+        division = float(division_1)
+    elif division_1 is not None:
+        print(f"Warning: Only division_1 found, using it as division value")
+        division = float(division_1)
+    elif division_3 is not None:
+        print(f"Warning: Only division_3 found, using it as division value")
+        division = float(division_3)
+    else:
+        print(f"Warning: No division values found in .set file, using default value of 1")
+        division = 1.0
 
     return runtime, start_datetime, integration_time, is_integration_enabled, division, trig_1, trig_3
-
-
 
 # ------------------------
 # Format integration info for display
@@ -156,11 +161,13 @@ def load_phs_file(file_path, multi_channel=False):
         file_ext = Path(file_path).suffix.lower()
 
         if file_ext in ['.txt', '.dat']:
-
                 data = pd.read_csv(file_path, sep="\t", header=0).dropna(axis=1, how="all")
-                
         else:
             print(f"Unsupported file format: {file_ext}")
+            if multi_channel:
+                return None, None
+            else:
+                return None, None
 
         if not multi_channel:
             # Original single channel behavior
@@ -217,14 +224,16 @@ def load_phs_file(file_path, multi_channel=False):
             return None, None
 
 # ------------------------
-# Analyze highest X peak in one file
+# Analyze ALL peaks in one file (MODIFIED)
 # ------------------------
-def analyze_largest_peak(x, y, window=10, poly=3, prominence=0.05,
-                         show_plot=True, save_plot=False, save_path=None, file_name=None,
-                         runtime=None, start_datetime=None, integration_time=None, 
-                         is_integration_enabled=None, normalise=True, channel_name=None, division = 1, trig_1=None, trig_3=None):
+def analyze_all_peaks(x, y, window=10, poly=3, prominence=0.05,
+                      show_plot=True, save_plot=False, save_path=None, file_name=None,
+                      runtime=None, start_datetime=None, integration_time=None, 
+                      is_integration_enabled=None, normalise=True, channel_name=None, 
+                      division=1, trig_1=None, trig_3=None):
     """
-    Smooths data, finds peak with highest x-value, fits Gaussian, and optionally plots/saves results.
+    Smooths data, finds ALL peaks, fits Gaussian to each, and optionally plots/saves results.
+    Returns a list of all peak information.
     """
     # Parse runtime for normalisation
     runtime_seconds = parse_runtime_to_seconds(runtime) if runtime else None
@@ -232,21 +241,18 @@ def analyze_largest_peak(x, y, window=10, poly=3, prominence=0.05,
     # normalise data if requested and runtime is available
     y_original = y.copy()
     if normalise and runtime_seconds and runtime_seconds > 0:
-        # Normalise counts by runtime
         y = y / runtime_seconds
         y_label = "Counts/second"
         normalisation_note_runtime = f"normalised by runtime ({runtime}s)"
-        #Normalise by bins using division:
-        
     else:
         y_label = "Counts"
         normalisation_note_runtime = "Raw counts (no normalisation)" if not normalise else "Raw counts (runtime unavailable)"
     
-    # Smooth data (using potentially normalised y)
+    # Smooth data
     y_smooth = savgol_filter(y, window_length=window, polyorder=poly)
 
-    # Find peaks on smoothed data
-    peaks, _ = find_peaks(
+    # Find ALL peaks on smoothed data
+    peaks, properties = find_peaks(
         y_smooth,
         height=np.max(y_smooth) * prominence,
         distance=len(y) // 20
@@ -254,28 +260,15 @@ def analyze_largest_peak(x, y, window=10, poly=3, prominence=0.05,
 
     if len(peaks) == 0:
         print(f"No peaks detected in {channel_name if channel_name else 'data'}.")
-        return None, None, None, None
+        return []
 
-    # Select peak with highest x-value (rightmost peak)
-    highest_x_peak_idx = peaks[np.argmax(x[peaks])]
-    peak_x = x[highest_x_peak_idx]
-    peak_y = y_smooth[highest_x_peak_idx]
-
-    # Fit Gaussian around highest x peak
-    fit_range = (x > peak_x - (x[-1] - x[0]) * 0.05) & (x < peak_x + (x[-1] - x[0]) * 0.05)
-    x_fit = x[fit_range]
-    y_fit = y_smooth[fit_range]
-    p0 = [peak_y, peak_x, (x_fit[-1] - x_fit[0]) / 6]
-
-    try:
-        popt, _ = curve_fit(gaussian, x_fit, y_fit, p0=p0)
-    except RuntimeError:
-        popt = [peak_y, peak_x, (x_fit[-1] - x_fit[0]) / 6]
-
+    # Store information for all peaks
+    all_peak_info = []
+    
     # Create the plot
     plt.figure(figsize=(12, 8))
     
-    # Plot original (potentially normalised) data
+    # Plot original data
     if normalise and runtime_seconds:
         plt.plot(x, y, label="normalised Spectrum", color="lightblue", alpha=0.7, linewidth=1.5)
     else:
@@ -283,10 +276,52 @@ def analyze_largest_peak(x, y, window=10, poly=3, prominence=0.05,
     
     plt.plot(x, y_smooth, label="Smoothed Spectrum", color="blue", linewidth=2)
     plt.plot(x[peaks], y_smooth[peaks], "ro", markersize=8, label="Detected Peaks")
-    plt.plot(x_fit, gaussian(x_fit, *popt), "g--", linewidth=3,
-             label="Gaussian Fit (highest x peak)")
     
-    # Create info text for the plot with integration information
+    # Fit Gaussian to each peak
+    colors = plt.cm.rainbow(np.linspace(0, 1, len(peaks)))
+    
+    for idx, (peak_idx, color) in enumerate(zip(peaks, colors)):
+        peak_x = x[peak_idx]
+        peak_y = y_smooth[peak_idx]
+        
+        # Fit Gaussian around this peak
+        fit_range = (x > peak_x - (x[-1] - x[0]) * 0.05) & (x < peak_x + (x[-1] - x[0]) * 0.05)
+        x_fit = x[fit_range]
+        y_fit = y_smooth[fit_range]
+        p0 = [peak_y, peak_x, (x_fit[-1] - x_fit[0]) / 6]
+
+        try:
+            popt, _ = curve_fit(gaussian, x_fit, y_fit, p0=p0)
+            
+            # Plot Gaussian fit
+            plt.plot(x_fit, gaussian(x_fit, *popt), "--", linewidth=2, color=color,
+                    label=f"Peak {idx+1} Fit (X={peak_x:.4f})")
+            
+            # Store peak information
+            peak_info = {
+                'peak_number': idx + 1,
+                'peak_x': peak_x,
+                'peak_y': peak_y,
+                'gaussian_A': popt[0],
+                'gaussian_mu': popt[1],
+                'gaussian_sigma': popt[2]
+            }
+            all_peak_info.append(peak_info)
+            
+        except RuntimeError:
+            # If fit fails, still store the peak location
+            peak_info = {
+                'peak_number': idx + 1,
+                'peak_x': peak_x,
+                'peak_y': peak_y,
+                'gaussian_A': None,
+                'gaussian_mu': None,
+                'gaussian_sigma': None
+            }
+            all_peak_info.append(peak_info)
+            print(f"Warning: Gaussian fit failed for peak {idx+1} at X={peak_x:.4f}")
+    
+    # Create info text for the plot
     integration_info = format_integration_info(integration_time, is_integration_enabled)
     info_text = f'Start DateTime: {start_datetime}\n'
     info_text += f'Runtime: {runtime}\n'
@@ -295,37 +330,32 @@ def analyze_largest_peak(x, y, window=10, poly=3, prominence=0.05,
     info_text += f'Trigger Level Ch1: {trig_1} mV\n'
     info_text += f'Trigger Level Ch3: {trig_3} mV\n'
     info_text += integration_info
+    info_text += f'\nTotal Peaks Detected: {len(peaks)}'
    
     if channel_name:
         info_text += f'\nChannel: {channel_name}'
     
-    plt.figtext(0.76, 0.63, info_text, fontsize=10, bbox=dict(boxstyle="round,pad=0.5", facecolor="lightgray", alpha=0.8))
+    plt.figtext(0.76, 0.63, info_text, fontsize=10, 
+                bbox=dict(boxstyle="round,pad=0.5", facecolor="lightgray", alpha=0.8))
     
-    plt.axvline(peak_x, color="purple", linestyle="--", linewidth=2, 
-                label=f"Peak X = {peak_x:.4f}")
     plt.xlabel("Voltage Output", fontsize=12)
     plt.ylabel(y_label, fontsize=12)
     
     title_suffix = f" - {channel_name}" if channel_name else ""
-    plt.title(f"Highest X Peak Detection: {file_name if file_name else 'Unknown File'}{title_suffix}", 
+    plt.title(f"All Peaks Detection: {file_name if file_name else 'Unknown File'}{title_suffix}", 
               fontsize=14, fontweight='bold')
-    plt.legend(fontsize=10)
+    plt.legend(fontsize=9, loc='best')
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
 
     # Save plot if requested
     if save_plot and save_path and file_name:
-        # Ensure the save path exists
         os.makedirs(save_path, exist_ok=True)
-        
-        # Generate timestamp in YYMMDD_HHMMSS format
         timestamp = datetime.now().strftime("%y%m%d_%H%M%S")
-        
-        # Create filename with timestamp
         base_name = os.path.splitext(file_name)[0]
         norm_suffix = "_normalised" if normalise and runtime_seconds else "_raw"
         channel_suffix = f"_{channel_name}" if channel_name else ""
-        plot_filename = f"{base_name}_{timestamp}{norm_suffix}{channel_suffix}_peak_plot.png"
+        plot_filename = f"{base_name}_{timestamp}{norm_suffix}{channel_suffix}_all_peaks_plot.png"
         full_plot_path = os.path.join(save_path, plot_filename)
         
         try:
@@ -334,13 +364,12 @@ def analyze_largest_peak(x, y, window=10, poly=3, prominence=0.05,
         except Exception as e:
             print(f"Error saving plot: {e}")
 
-    # Show or close the plot
     if show_plot:
         plt.show()
     else:
         plt.close()
 
-    return peaks, peak_x, peak_y, popt
+    return all_peak_info
 
 # ------------------------
 # Create overlay plot of all spectra
@@ -348,27 +377,15 @@ def analyze_largest_peak(x, y, window=10, poly=3, prominence=0.05,
 def create_phs_overlay(spectra_data, save_path=None, normalise=True):
     """
     Create an overlay plot of all PHS spectra
-    
-    Parameters:
-    -----------
-    spectra_data : list of dict
-        List containing dictionaries with keys: 'x', 'y', 'filename', 'runtime'
-    save_path : str
-        Path to save the overlay plot
-    normalise : bool
-        Whether the data was normalised
     """
     if not spectra_data:
         print("No spectra data available for overlay plot.")
         return
     
-    # Create the overlay plot
     plt.figure(figsize=(14, 10))
     
-    # Define a color map for different files
     colors = plt.cm.tab10(np.linspace(0, 1, min(len(spectra_data), 10)))
     if len(spectra_data) > 10:
-        # If more than 10 files, use a continuous colormap
         colors = plt.cm.viridis(np.linspace(0, 1, len(spectra_data)))
     
     for i, spectrum in enumerate(spectra_data):
@@ -378,7 +395,6 @@ def create_phs_overlay(spectra_data, save_path=None, normalise=True):
         runtime = spectrum['runtime']
         channel = spectrum.get('channel', '')
         
-        # Use different line styles for better distinction if many files
         linestyle = '-' if len(spectra_data) <= 10 else '-'
         alpha = 0.7 if len(spectra_data) <= 5 else 0.6
         linewidth = 1.5 if len(spectra_data) <= 10 else 1.0
@@ -387,7 +403,6 @@ def create_phs_overlay(spectra_data, save_path=None, normalise=True):
         plt.plot(x, y, color=colors[i], alpha=alpha, linewidth=linewidth,
                 linestyle=linestyle, label=label)
     
-    # Set labels and title
     y_label = "Counts/second" if normalise else "Counts"
     plt.xlabel("Voltage Output", fontsize=12)
     plt.ylabel(y_label, fontsize=12)
@@ -396,11 +411,9 @@ def create_phs_overlay(spectra_data, save_path=None, normalise=True):
     title += "Normalised by Runtime" if normalise else "Raw Counts"
     plt.title(title, fontsize=14, fontweight='bold')
     
-    # Add legend (handle many files gracefully)
     if len(spectra_data) <= 15:
         plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=10)
     else:
-        # For many files, add a simplified legend or note
         plt.figtext(0.02, 0.98, f"Showing {len(spectra_data)} spectra", 
                    fontsize=10, bbox=dict(boxstyle="round,pad=0.3", facecolor="lightgray", alpha=0.8),
                    verticalalignment='top')
@@ -408,12 +421,8 @@ def create_phs_overlay(spectra_data, save_path=None, normalise=True):
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
     
-    # Save overlay plot if requested
     if save_path:
-        # Ensure the save path exists
         os.makedirs(save_path, exist_ok=True)
-        
-        # Generate timestamp
         timestamp = datetime.now().strftime("%y%m%d_%H%M%S")
         norm_suffix = "_normalised" if normalise else "_raw"
         overlay_filename = f"PHS_Spectra_Overlay_{timestamp}{norm_suffix}.png"
@@ -438,29 +447,12 @@ def find_phs_files(folder_path):
     return sorted(files)
 
 # ------------------------
-# Process all files in folder (modified for multi-channel)
+# Process all files in folder (MODIFIED FOR ALL PEAKS)
 # ------------------------
 def process_phs_folder(folder_path, save_results=True, save_plots=False, 
                        custom_save_path=None, normalise=True, phs_overlay=False, multi_channel=False):
     """
-    Process all PHS files in a folder.
-    
-    Parameters:
-    -----------
-    folder_path : str
-        Path to folder containing PHS data files
-    save_results : bool
-        Whether to save results CSV
-    save_plots : bool  
-        Whether to save individual plots
-    custom_save_path : str
-        Custom path for saving outputs
-    normalise : bool
-        Whether to normalise counts by runtime (default: True)
-    phs_overlay : bool
-        Whether to create an overlay plot of all spectra (default: False)
-    multi_channel : bool
-        Whether to process multiple channels (default: False)
+    Process all PHS files in a folder and extract ALL peaks.
     """
     files = find_phs_files(folder_path)
     if not files:
@@ -468,7 +460,7 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False,
         return
 
     results = []
-    spectra_data = []  # Store data for overlay plot
+    spectra_data = []
     
     print(f"Found {len(files)} files to analyze.")
     print(f"Multi-channel: {'ON' if multi_channel else 'OFF'}")
@@ -476,10 +468,8 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False,
     print(f"PHS Overlay: {'ON' if phs_overlay else 'OFF'}")
     print("")
 
-    # Use custom save path if provided, else default to folder_path
     save_path = custom_save_path if custom_save_path else folder_path
     
-    # Ensure the save path exists
     if save_path:
         os.makedirs(save_path, exist_ok=True)
         if save_plots:
@@ -489,20 +479,17 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False,
         print(f"Processing {i}/{len(files)}: {Path(file).name}")
         
         if not multi_channel:
-            # Original single channel processing
+            # Single channel processing
             x, y = load_phs_file(file, multi_channel=False)
             if x is None or y is None:
                 print(f"Skipping file: {file}")
                 continue
 
-            # Read associated .set file
-            runtime, start_datetime, integration_time, is_integration_enabled, divison,trig_1,trig_3 = read_set_file(file)
+            runtime, start_datetime, integration_time, is_integration_enabled, division, trig_1, trig_3 = read_set_file(file)
 
-            # Store original data for overlay (before any processing)
             y_original = y.copy()
             runtime_seconds = parse_runtime_to_seconds(runtime) if runtime else None
             
-            # Apply normalisation for overlay data if requested
             if phs_overlay:
                 if normalise and runtime_seconds and runtime_seconds > 0:
                     y_overlay = y_original / runtime_seconds
@@ -516,7 +503,8 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False,
                     'runtime': runtime
                 })
 
-            peaks, peak_x, peak_y, popt = analyze_largest_peak(
+            # Get ALL peaks
+            all_peaks = analyze_all_peaks(
                 x, y,
                 show_plot=True,
                 save_plot=save_plots,
@@ -527,34 +515,36 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False,
                 integration_time=integration_time,
                 is_integration_enabled=is_integration_enabled,
                 normalise=normalise,
-                division=divison,
-                trig_1=trig_1, trig_3=trig_3    
+                division=division,
+                trig_1=trig_1, 
+                trig_3=trig_3    
             )
 
-            if peak_x is None:
+            if not all_peaks:
                 print(f"No peaks found in {file}")
                 continue
 
-            # Store results
-            result = {
-                "File": Path(file).name,
-                "Highest_X_Peak_X": peak_x,
-                "Highest_X_Peak_Y": peak_y,
-                "Gaussian_A": popt[0],
-                "Gaussian_Mu": popt[1],
-                "Gaussian_Sigma": popt[2],
-                "Runtime": runtime,
-                "StartDateTime": start_datetime,
-                "IntegrationTime": integration_time,
-                "IsIntegrationEnabled": is_integration_enabled,
-                "normalised": normalise and parse_runtime_to_seconds(runtime) is not None
-            }
-            results.append(result)
+            # Store each peak as a separate row
+            for peak_info in all_peaks:
+                result = {
+                    "File": Path(file).name,
+                    "Peak_Number": peak_info['peak_number'],
+                    "Peak_X": peak_info['peak_x'],
+                    "Peak_Y": peak_info['peak_y'],
+                    "Gaussian_A": peak_info['gaussian_A'],
+                    "Gaussian_Mu": peak_info['gaussian_mu'],
+                    "Gaussian_Sigma": peak_info['gaussian_sigma'],
+                    "Runtime": runtime,
+                    "StartDateTime": start_datetime,
+                    "IntegrationTime": integration_time,
+                    "IsIntegrationEnabled": is_integration_enabled,
+                    "normalised": normalise and runtime_seconds is not None
+                }
+                results.append(result)
             
-            # Print status
-            norm_status = " (normalised)" if result["normalised"] else " (raw)"
+            norm_status = " (normalised)" if (normalise and runtime_seconds) else " (raw)"
             integration_info = format_integration_info(integration_time, is_integration_enabled)
-            print(f"Peak found at X = {peak_x:.5f}, Y = {peak_y:.2f}{norm_status}")
+            print(f"Found {len(all_peaks)} peaks{norm_status}")
             print(f"{integration_info}\n")
         
         else:
@@ -564,23 +554,11 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False,
                 print(f"Skipping file: {file}")
                 continue
 
-            # Read associated .set file
-            runtime, start_datetime, integration_time, is_integration_enabled, divison,trig_1,trig_3 = read_set_file(file)
+            runtime, start_datetime, integration_time, is_integration_enabled, division, trig_1, trig_3 = read_set_file(file)
             runtime_seconds = parse_runtime_to_seconds(runtime) if runtime else None
-            
-            # Create base result for this file
-            combined_result = {
-                "File": Path(file).name,
-                "Runtime": runtime,
-                "StartDateTime": start_datetime,
-                "IntegrationTime": integration_time,
-                "IsIntegrationEnabled": is_integration_enabled,
-                "normalised": normalise and runtime_seconds is not None
-            }
             
             print(f"Processing {len(channel_names)} channels: {', '.join(channel_names)}")
             
-            # Process each channel
             for channel_name in channel_names:
                 if channel_name not in channels_data:
                     continue
@@ -588,7 +566,6 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False,
                 x = channels_data[channel_name]['x']
                 y = channels_data[channel_name]['y']
                 
-                # Store original data for overlay
                 if phs_overlay:
                     y_overlay = y.copy()
                     if normalise and runtime_seconds and runtime_seconds > 0:
@@ -602,8 +579,8 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False,
                         'channel': channel_name
                     })
                 
-                # Analyze peak for this channel
-                peaks, peak_x, peak_y, popt = analyze_largest_peak(
+                # Get ALL peaks for this channel
+                all_peaks = analyze_all_peaks(
                     x, y,
                     show_plot=True,
                     save_plot=save_plots,
@@ -615,29 +592,36 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False,
                     is_integration_enabled=is_integration_enabled,
                     normalise=normalise,
                     channel_name=channel_name,
-                    division=divison,
+                    division=division,
                     trig_1=trig_1,
                     trig_3=trig_3
                 )
                 
-                if peak_x is None:
+                if not all_peaks:
                     print(f"No peaks found in {channel_name}")
                     continue
                 
-                # Add channel-specific data to combined result
-                combined_result[f"Peak_{channel_name}_X"] = peak_x
-                combined_result[f"Peak_{channel_name}_Y"] = peak_y
-                combined_result[f"Gaussian_{channel_name}_A"] = popt[0]
-                combined_result[f"Gaussian_{channel_name}_Mu"] = popt[1]
-                combined_result[f"Gaussian_{channel_name}_Sigma"] = popt[2]
+                # Store each peak as a separate row
+                for peak_info in all_peaks:
+                    result = {
+                        "File": Path(file).name,
+                        "Channel": channel_name,
+                        "Peak_Number": peak_info['peak_number'],
+                        "Peak_X": peak_info['peak_x'],
+                        "Peak_Y": peak_info['peak_y'],
+                        "Gaussian_A": peak_info['gaussian_A'],
+                        "Gaussian_Mu": peak_info['gaussian_mu'],
+                        "Gaussian_Sigma": peak_info['gaussian_sigma'],
+                        "Runtime": runtime,
+                        "StartDateTime": start_datetime,
+                        "IntegrationTime": integration_time,
+                        "IsIntegrationEnabled": is_integration_enabled,
+                        "normalised": normalise and runtime_seconds is not None
+                    }
+                    results.append(result)
                 
-                # Print status
-                norm_status = " (normalised)" if combined_result["normalised"] else " (raw)"
-                print(f"{channel_name}: Peak found at X = {peak_x:.5f}, Y = {peak_y:.2f}{norm_status}")
-            
-            # Add combined result if any peaks were found
-            if any(f"Peak_{ch}_X" in combined_result for ch in channel_names):
-                results.append(combined_result)
+                norm_status = " (normalised)" if (normalise and runtime_seconds) else " (raw)"
+                print(f"{channel_name}: Found {len(all_peaks)} peaks{norm_status}")
             
             integration_info = format_integration_info(integration_time, is_integration_enabled)
             print(f"{integration_info}\n")
@@ -647,13 +631,12 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False,
         print("\nCreating PHS spectra overlay plot...")
         create_phs_overlay(spectra_data, save_path=save_path, normalise=normalise)
 
-    # Save summary CSV in the save path with timestamp
+    # Save summary CSV with ALL peaks
     if save_results and results:
-        # Generate timestamp for the CSV file as well
         timestamp = datetime.now().strftime("%y%m%d_%H%M%S")
         norm_suffix = "_normalised" if normalise else "_raw"
         multi_suffix = "_multichannel" if multi_channel else ""
-        csv_filename = f"PHS_Peak_Summary_{timestamp}{norm_suffix}{multi_suffix}.csv"
+        csv_filename = f"PHS_All_Peaks_Summary_{timestamp}{norm_suffix}{multi_suffix}.csv"
         csv_path = os.path.join(save_path, csv_filename)
         
         try:
@@ -667,31 +650,27 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False,
         df = pd.DataFrame(results)
         print("\n" + "="*80)
         if multi_channel:
-            print("SUMMARY OF PEAKS (MULTI-CHANNEL):")
+            print("SUMMARY OF ALL PEAKS (MULTI-CHANNEL):")
         else:
-            print("SUMMARY OF HIGHEST X PEAKS:")
+            print("SUMMARY OF ALL PEAKS:")
         if normalise:
             print("(normalised by runtime where available)")
         else:
             print("(Raw counts - no normalisation)")
         print("="*80)
         
-        # Display appropriate columns based on mode
+        # Display appropriate columns
         if multi_channel:
-            display_columns = ["File", "Runtime", "StartDateTime", "IntegrationTime", "IsIntegrationEnabled", "normalised"]
-            # Add channel-specific columns
-            for col in df.columns:
-                if col.startswith("Peak_") and col.endswith("_X"):
-                    display_columns.append(col)
-                    display_columns.append(col.replace("_X", "_Y"))
+            display_columns = ["File", "Channel", "Peak_Number", "Peak_X", "Peak_Y", 
+                              "Runtime", "StartDateTime", "normalised"]
         else:
-            display_columns = ["File", "Highest_X_Peak_X", "Highest_X_Peak_Y", "Runtime", 
-                              "StartDateTime", "IntegrationTime", "IsIntegrationEnabled", "normalised"]
+            display_columns = ["File", "Peak_Number", "Peak_X", "Peak_Y", 
+                              "Runtime", "StartDateTime", "normalised"]
         
-        # Only show columns that exist in the dataframe
         existing_columns = [col for col in display_columns if col in df.columns]
         print(df[existing_columns].to_string(index=False))
         print("="*80)
+        print(f"Total peaks found: {len(results)}")
     else:
         print("No results to display.")
 
@@ -700,13 +679,13 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False,
 # ------------------------
 if __name__ == "__main__":
     # Update these paths as needed
-    folder_path = r"\\isis\Shares\Detectors\Lisa Malliolio 2025\PMT_calibration_20251001\batch1_43mmtiles_251003\finepass"
+    folder_path = r"\\isis\shares\Detectors\Ben Thompson 2025-2026\Ben Thompson 2025-2025 Shared\Labs\Scintillating Tile Tests\dual_pmt_rig_251112\calibration\lhs_pmt"
     custom_save_path = r"Save Path Here"
     
     # Process with multi-channel enabled
-    process_phs_folder(folder_path, save_results=False, save_plots=False, 
-                      custom_save_path=custom_save_path, normalise=True, 
-                      phs_overlay=True, multi_channel=True)
+    process_phs_folder(folder_path, save_results=True, save_plots=True, 
+                      custom_save_path=custom_save_path, normalise=False, 
+                      phs_overlay=True, multi_channel=False)
     
     # To process single channel (original behavior):
     # process_phs_folder(folder_path, save_results=True, save_plots=True, 
