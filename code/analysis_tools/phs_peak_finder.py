@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib import cm
 from scipy.signal import find_peaks, savgol_filter
 from scipy.optimize import curve_fit
 import pandas as pd
@@ -174,7 +175,7 @@ def load_phs_file(file_path, multi_channel=False):
             if data.shape[1] >= 2:
                 x = data.iloc[:, 0].values
                 y = data.iloc[:, 1].values
-                valid_mask = ~(np.isnan(x) | np.isnan(y))
+                valid_mask = ~pd.isna(y)   # or y.notna() if y is a Series
                 return x[valid_mask], y[valid_mask]
             else:
                 print(f"Warning: File {file_path} doesn't have at least 2 columns")
@@ -205,7 +206,7 @@ def load_phs_file(file_path, multi_channel=False):
                     y = data.iloc[:, col_idx + 1].values  # Counts column
                     
                     # Remove invalid data points
-                    valid_mask = ~(np.isnan(x) | np.isnan(y))
+                    valid_mask = ~pd.isna(y)
                     channels_data[channel_name] = {
                         'x': x[valid_mask],
                         'y': y[valid_mask]
@@ -224,13 +225,13 @@ def load_phs_file(file_path, multi_channel=False):
             return None, None
 
 # ------------------------
-# Analyze ALL peaks in one file (MODIFIED)
+# Analyze ALL peaks in one file (FIXED)
 # ------------------------
 def analyze_all_peaks(x, y, window=10, poly=3, prominence=0.05,
                       show_plot=True, save_plot=False, save_path=None, file_name=None,
                       runtime=None, start_datetime=None, integration_time=None, 
                       is_integration_enabled=None, normalise=True, channel_name=None, 
-                      division=1, trig_1=None, trig_3=None):
+                      division=1.0, trig_1=None, trig_3=None):
     """
     Smooths data, finds ALL peaks, fits Gaussian to each, and optionally plots/saves results.
     Returns a list of all peak information.
@@ -252,7 +253,7 @@ def analyze_all_peaks(x, y, window=10, poly=3, prominence=0.05,
     y_smooth = savgol_filter(y, window_length=window, polyorder=poly)
 
     # Find ALL peaks on smoothed data
-    peaks, properties = find_peaks(
+    peaks, _ = find_peaks(
         y_smooth,
         height=np.max(y_smooth) * prominence,
         distance=len(y) // 20
@@ -272,15 +273,15 @@ def analyze_all_peaks(x, y, window=10, poly=3, prominence=0.05,
     if normalise and runtime_seconds:
         plt.plot(x, y, label="normalised Spectrum", color="lightblue", alpha=0.7, linewidth=1.5)
     else:
-        plt.plot(x, y, label="Raw Spectrum", color="lightgray", alpha=0.7)
+        plt.plot(x, y_original, label="Raw Spectrum", color="lightgray", alpha=0.7)
     
     plt.plot(x, y_smooth, label="Smoothed Spectrum", color="blue", linewidth=2)
     plt.plot(x[peaks], y_smooth[peaks], "ro", markersize=8, label="Detected Peaks")
     
-    # Fit Gaussian to each peak
-    colors = plt.cm.rainbow(np.linspace(0, 1, len(peaks)))
+    # FIX: Changed from 'colour' to 'color' to match loop variable
+    color = "green"
     
-    for idx, (peak_idx, color) in enumerate(zip(peaks, colors)):
+    for idx, peak_idx in enumerate(peaks):
         peak_x = x[peak_idx]
         peak_y = y_smooth[peak_idx]
         
@@ -325,13 +326,14 @@ def analyze_all_peaks(x, y, window=10, poly=3, prominence=0.05,
     integration_info = format_integration_info(integration_time, is_integration_enabled)
     info_text = f'Start DateTime: {start_datetime}\n'
     info_text += f'Runtime: {runtime}\n'
-    info_text += f'mV Per Division {division*100}\n'
+    # FIX: Ensure division is valid before formatting
+    if division is not None:
+        info_text += f'mV Per Division: {division*100:.2f}\n'
     info_text += f'{normalisation_note_runtime}\n'
     info_text += f'Trigger Level Ch1: {trig_1} mV\n'
     info_text += f'Trigger Level Ch3: {trig_3} mV\n'
     info_text += integration_info
-    info_text += f'\nTotal Peaks Detected: {len(peaks)}'
-   
+    info_text += f'\nTotal Peaks Detected: {len(peaks)}' 
     if channel_name:
         info_text += f'\nChannel: {channel_name}'
     
@@ -343,7 +345,7 @@ def analyze_all_peaks(x, y, window=10, poly=3, prominence=0.05,
     
     title_suffix = f" - {channel_name}" if channel_name else ""
     plt.title(f"All Peaks Detection: {file_name if file_name else 'Unknown File'}{title_suffix}", 
-              fontsize=14, fontweight='bold')
+                fontsize=14, fontweight='bold')
     plt.legend(fontsize=9, loc='best')
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
@@ -384,9 +386,11 @@ def create_phs_overlay(spectra_data, save_path=None, normalise=True):
     
     plt.figure(figsize=(14, 10))
     
-    colors = plt.cm.tab10(np.linspace(0, 1, min(len(spectra_data), 10)))
+    # choose tab10 for up to 10 spectra, otherwise viridis for more
+    n = min(len(spectra_data), 10)
+    colors = cm.get_cmap("tab10")(np.linspace(0, 1, n))
     if len(spectra_data) > 10:
-        colors = plt.cm.viridis(np.linspace(0, 1, len(spectra_data)))
+        colors = cm.get_cmap("viridis")(np.linspace(0, 1, len(spectra_data)))
     
     for i, spectrum in enumerate(spectra_data):
         x = spectrum['x']
@@ -447,7 +451,7 @@ def find_phs_files(folder_path):
     return sorted(files)
 
 # ------------------------
-# Process all files in folder (MODIFIED FOR ALL PEAKS)
+# Process all files in folder (FIXED)
 # ------------------------
 def process_phs_folder(folder_path, save_results=True, save_plots=False, 
                        custom_save_path=None, normalise=True, phs_overlay=False, multi_channel=False):
@@ -487,12 +491,13 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False,
 
             runtime, start_datetime, integration_time, is_integration_enabled, division, trig_1, trig_3 = read_set_file(file)
 
-            y_original = y.copy()
+            # FIX: Ensure y_original is properly converted to numeric
+            y_original = pd.to_numeric(pd.Series(y), errors='coerce').to_numpy(dtype=float)
             runtime_seconds = parse_runtime_to_seconds(runtime) if runtime else None
             
             if phs_overlay:
                 if normalise and runtime_seconds and runtime_seconds > 0:
-                    y_overlay = y_original / runtime_seconds
+                    y_overlay = y_original / float(runtime_seconds)
                 else:
                     y_overlay = y_original.copy()
                 
@@ -502,7 +507,6 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False,
                     'filename': Path(file).name,
                     'runtime': runtime
                 })
-
             # Get ALL peaks
             all_peaks = analyze_all_peaks(
                 x, y,
@@ -565,6 +569,9 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False,
                     
                 x = channels_data[channel_name]['x']
                 y = channels_data[channel_name]['y']
+                
+                # FIX: Ensure y is numeric before overlay processing
+                y = pd.to_numeric(pd.Series(y), errors='coerce').to_numpy(dtype=float)
                 
                 if phs_overlay:
                     y_overlay = y.copy()
@@ -662,10 +669,10 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False,
         # Display appropriate columns
         if multi_channel:
             display_columns = ["File", "Channel", "Peak_Number", "Peak_X", "Peak_Y", 
-                              "Runtime", "StartDateTime", "normalised"]
+                            "Runtime", "StartDateTime", "normalised"]
         else:
             display_columns = ["File", "Peak_Number", "Peak_X", "Peak_Y", 
-                              "Runtime", "StartDateTime", "normalised"]
+                            "Runtime", "StartDateTime", "normalised"]
         
         existing_columns = [col for col in display_columns if col in df.columns]
         print(df[existing_columns].to_string(index=False))
@@ -679,13 +686,12 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False,
 # ------------------------
 if __name__ == "__main__":
     # Update these paths as needed
-    folder_path = r"\\isis\shares\Detectors\Ben Thompson 2025-2026\Ben Thompson 2025-2025 Shared\Labs\Scintillating Tile Tests\dual_pmt_rig_251112\calibration\lhs_pmt"
-    custom_save_path = r"Save Path Here"
-    
+    folder_path = r"\\isis\shares\Detectors\Ben Thompson 2025-2026\Ben Thompson 2025-2025 Shared\Labs\Scintillating Tile Tests\dual_pmt_rig_251112\grease_tests_251113"
+    custom_save_path = r"save_path_here"
     # Process with multi-channel enabled
-    process_phs_folder(folder_path, save_results=True, save_plots=True, 
-                      custom_save_path=custom_save_path, normalise=False, 
-                      phs_overlay=True, multi_channel=False)
+    process_phs_folder(folder_path, save_results=False, save_plots=False, 
+                        custom_save_path=custom_save_path, normalise=True, 
+                        phs_overlay=True, multi_channel=True)
     
     # To process single channel (original behavior):
     # process_phs_folder(folder_path, save_results=True, save_plots=True, 
