@@ -4,5 +4,6 @@
 *.jpeg
 *.svg
 
+*.ipynb
 # Ignore plots folder
 /Figures/
