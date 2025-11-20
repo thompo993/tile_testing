@@ -173,8 +173,8 @@ def load_phs_file(file_path, multi_channel=False):
         if not multi_channel:
             # Original single channel behavior
             if data.shape[1] >= 2:
-                x = data.iloc[:, 0].values
-                y = data.iloc[:, 1].values
+                x = data.iloc[:, 4].values # changed to get channel b+d
+                y = data.iloc[:, 5].values
                 valid_mask = ~pd.isna(y)   # or y.notna() if y is a Series
                 return x[valid_mask], y[valid_mask]
             else:
@@ -225,10 +225,45 @@ def load_phs_file(file_path, multi_channel=False):
             return None, None
 
 # ------------------------
-# Analyze ALL peaks in one file (FIXED)
+# Save plot data to CSV
+# ------------------------
+def save_plot_data_to_csv(x, y, y_smooth, peaks, save_path, file_name, channel_name=None, 
+                          normalise=True, runtime_seconds=None):
+    """
+    Save the plot data (raw, smoothed, and peak locations) to a CSV file
+    """
+    if save_path is None or file_name is None:
+        return
+    
+    os.makedirs(save_path, exist_ok=True)
+    timestamp = datetime.now().strftime("%y%m%d_%H%M%S")
+    base_name = os.path.splitext(file_name)[0]
+    norm_suffix = "_normalised" if normalise and runtime_seconds else "_raw"
+    channel_suffix = f"_{channel_name}" if channel_name else ""
+    csv_filename = f"{base_name}_{timestamp}{norm_suffix}{channel_suffix}_plot_data.csv"
+    full_csv_path = os.path.join(save_path, csv_filename)
+    
+    try:
+        # Create DataFrame with plot data
+        df_data = {
+            'Voltage': x,
+            'Counts_Raw': y,
+            'Counts_Smoothed': y_smooth,
+            'Is_Peak': [1 if i in peaks else 0 for i in range(len(x))]
+        }
+        
+        df = pd.DataFrame(df_data)
+        df.to_csv(full_csv_path, index=False)
+        print(f"Plot data CSV saved to: {full_csv_path}")
+        
+    except Exception as e:
+        print(f"Error saving plot data CSV: {e}")
+
+# ------------------------
+# Analyze ALL peaks in one file (UPDATED with save_csv)
 # ------------------------
 def analyze_all_peaks(x, y, window=10, poly=3, prominence=0.05,
-                      show_plot=True, save_plot=False, save_path=None, file_name=None,
+                      show_plot=True, save_plot=False, save_csv=False, save_path=None, file_name=None,
                       runtime=None, start_datetime=None, integration_time=None, 
                       is_integration_enabled=None, normalise=True, channel_name=None, 
                       division=1.0, trig_1=None, trig_3=None):
@@ -263,6 +298,11 @@ def analyze_all_peaks(x, y, window=10, poly=3, prominence=0.05,
         print(f"No peaks detected in {channel_name if channel_name else 'data'}.")
         return []
 
+    # Save plot data to CSV if requested
+    if save_csv and save_path and file_name:
+        save_plot_data_to_csv(x, y, y_smooth, peaks, save_path, file_name, 
+                            channel_name, normalise, runtime_seconds)
+
     # Store information for all peaks
     all_peak_info = []
     
@@ -278,7 +318,6 @@ def analyze_all_peaks(x, y, window=10, poly=3, prominence=0.05,
     plt.plot(x, y_smooth, label="Smoothed Spectrum", color="blue", linewidth=2)
     plt.plot(x[peaks], y_smooth[peaks], "ro", markersize=8, label="Detected Peaks")
     
-    # FIX: Changed from 'colour' to 'color' to match loop variable
     color = "green"
     
     for idx, peak_idx in enumerate(peaks):
@@ -326,7 +365,6 @@ def analyze_all_peaks(x, y, window=10, poly=3, prominence=0.05,
     integration_info = format_integration_info(integration_time, is_integration_enabled)
     info_text = f'Start DateTime: {start_datetime}\n'
     info_text += f'Runtime: {runtime}\n'
-    # FIX: Ensure division is valid before formatting
     if division is not None:
         info_text += f'mV Per Division: {division*100:.2f}\n'
     info_text += f'{normalisation_note_runtime}\n'
@@ -340,7 +378,7 @@ def analyze_all_peaks(x, y, window=10, poly=3, prominence=0.05,
     plt.figtext(0.76, 0.63, info_text, fontsize=10, 
                 bbox=dict(boxstyle="round,pad=0.5", facecolor="lightgray", alpha=0.8))
     
-    plt.xlabel("Voltage Output", fontsize=12)
+    plt.xlabel("Voltage Output [V]", fontsize=12)
     plt.ylabel(y_label, fontsize=12)
     
     title_suffix = f" - {channel_name}" if channel_name else ""
@@ -419,8 +457,8 @@ def create_phs_overlay(spectra_data, save_path=None, normalise=True):
         plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=10)
     else:
         plt.figtext(0.02, 0.98, f"Showing {len(spectra_data)} spectra", 
-                   fontsize=10, bbox=dict(boxstyle="round,pad=0.3", facecolor="lightgray", alpha=0.8),
-                   verticalalignment='top')
+                fontsize=10, bbox=dict(boxstyle="round,pad=0.3", facecolor="lightgray", alpha=0.8),
+                verticalalignment='top')
     
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
@@ -451,10 +489,10 @@ def find_phs_files(folder_path):
     return sorted(files)
 
 # ------------------------
-# Process all files in folder (FIXED)
+# Process all files in folder (UPDATED with save_csv)
 # ------------------------
-def process_phs_folder(folder_path, save_results=True, save_plots=False, 
-                       custom_save_path=None, normalise=True, phs_overlay=False, multi_channel=False):
+def process_phs_folder(folder_path, save_results=True, save_plots=False, save_csv=False,
+                    custom_save_path=None, normalise=True, phs_overlay=False, multi_channel=False):
     """
     Process all PHS files in a folder and extract ALL peaks.
     """
@@ -470,6 +508,7 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False,
     print(f"Multi-channel: {'ON' if multi_channel else 'OFF'}")
     print(f"normalisation: {'ON' if normalise else 'OFF'}")
     print(f"PHS Overlay: {'ON' if phs_overlay else 'OFF'}")
+    print(f"Save CSV: {'ON' if save_csv else 'OFF'}")
     print("")
 
     save_path = custom_save_path if custom_save_path else folder_path
@@ -478,6 +517,8 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False,
         os.makedirs(save_path, exist_ok=True)
         if save_plots:
             print(f"Plots will be saved to: {save_path}")
+        if save_csv:
+            print(f"Plot data CSVs will be saved to: {save_path}")
 
     for i, file in enumerate(files, 1):
         print(f"Processing {i}/{len(files)}: {Path(file).name}")
@@ -491,7 +532,6 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False,
 
             runtime, start_datetime, integration_time, is_integration_enabled, division, trig_1, trig_3 = read_set_file(file)
 
-            # FIX: Ensure y_original is properly converted to numeric
             y_original = pd.to_numeric(pd.Series(y), errors='coerce').to_numpy(dtype=float)
             runtime_seconds = parse_runtime_to_seconds(runtime) if runtime else None
             
@@ -512,6 +552,7 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False,
                 x, y,
                 show_plot=True,
                 save_plot=save_plots,
+                save_csv=save_csv,
                 save_path=save_path,
                 file_name=Path(file).name,
                 runtime=runtime,
@@ -570,7 +611,6 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False,
                 x = channels_data[channel_name]['x']
                 y = channels_data[channel_name]['y']
                 
-                # FIX: Ensure y is numeric before overlay processing
                 y = pd.to_numeric(pd.Series(y), errors='coerce').to_numpy(dtype=float)
                 
                 if phs_overlay:
@@ -591,6 +631,7 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False,
                     x, y,
                     show_plot=True,
                     save_plot=save_plots,
+                    save_csv=save_csv,
                     save_path=save_path,
                     file_name=Path(file).name,
                     runtime=runtime,
@@ -686,14 +727,10 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False,
 # ------------------------
 if __name__ == "__main__":
     # Update these paths as needed
-    folder_path = r"\\isis\shares\Detectors\Ben Thompson 2025-2026\Ben Thompson 2025-2025 Shared\Labs\Scintillating Tile Tests\dual_pmt_rig_251112\grease_tests_251113"
+    folder_path = r"file_path_here"
     custom_save_path = r"save_path_here"
-    # Process with multi-channel enabled
-    process_phs_folder(folder_path, save_results=False, save_plots=False, 
-                        custom_save_path=custom_save_path, normalise=True, 
-                        phs_overlay=True, multi_channel=True)
     
-    # To process single channel (original behavior):
-    # process_phs_folder(folder_path, save_results=True, save_plots=True, 
-    #                   custom_save_path=custom_save_path, normalise=True, 
-    #                   phs_overlay=True, multi_channel=False)
+    # Process with multi-channel enabled and CSV saving
+    process_phs_folder(folder_path, save_results=True, save_plots=True, 
+                        save_csv=True, custom_save_path=custom_save_path, 
+                        normalise=True, phs_overlay=True, multi_channel=False)
