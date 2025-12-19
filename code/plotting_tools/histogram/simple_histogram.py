@@ -32,7 +32,7 @@ n, bins, patches = plt.hist(peak_values, bins=6, color="skyblue", edgecolor="bla
 
 # Label frequencies on top of bars
 for i in range(len(n)):
-    plt.text((bins[i] + bins[i+1]) / 2, n[i] + 0.02, str(int(n[i])), ha='center', fontsize=10)
+    plt.text((bins[i] + bins[i+1]) / 2, float(n[i]) + 0.02, str(int(n[i])), ha='center', fontsize=10)
 
 # Add labels and title
 plt.xlabel("Average Peak Location (Voltage)", fontsize=12)
