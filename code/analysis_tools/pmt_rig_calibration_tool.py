@@ -513,7 +513,7 @@ if __name__ == "__main__":
     # Analyze directory with both Ch_B and Ch_D (creates separate plots for each)
     analyze_spectra_directory(
         save_individual_plots=False, 
-        individual_plot_path=r"\\isis\shares\Detectors\Lisa Malliolio 2025\PMT_calibration_20251001\ch0_n_ch1_for_bens_code",
+        individual_plot_path=r"path_here",
         target_channels=['Ch_B', 'Ch_D']  # Specify which physical channels to analyze
     )
     
