@@ -12,13 +12,13 @@ from datetime import datetime
 warnings.filterwarnings("ignore")
 
 # ------------------------
-# gaussian function
+# second-order polynomial function
 # ------------------------
-def gaussian(x, A, mu, sigma):
+def polynomial_2nd_order(x, a, b, c):
     """
-    standard gaussian function
+    second-order polynomial function: y = a*x^2 + b*x + c
     """
-    return A * np.exp(-(x - mu)**2 / (2 * sigma**2))
+    return a * x**2 + b * x + c
 
 # ------------------------
 # read .set file for Runtime and StartDateTime
@@ -260,7 +260,7 @@ def save_plot_data_to_csv(x, y, y_smooth, peaks, save_path, file_name, channel_n
         print(f"Error saving plot data CSV: {e}")
 
 # ------------------------
-# Analyze ALL peaks in one file (UPDATED with save_csv)
+# Analyze ALL peaks in one file (UPDATED with polynomial fit and errors)
 # ------------------------
 def analyze_all_peaks(x, y, window=10, poly=3, prominence=0.05,
                       show_plot=True, save_plot=False, save_csv=False, save_path=None, file_name=None,
@@ -268,7 +268,7 @@ def analyze_all_peaks(x, y, window=10, poly=3, prominence=0.05,
                       is_integration_enabled=None, normalise=True, channel_name=None, 
                       division=1.0, trig_1=None, trig_3=None):
     """
-    Smooths data, finds ALL peaks, fits Gaussian to each, and optionally plots/saves results.
+    Smooths data, finds ALL peaks, fits second-order polynomial to each, and optionally plots/saves results.
     Returns a list of all peak information.
     """
     # Parse runtime for normalisation
@@ -316,7 +316,7 @@ def analyze_all_peaks(x, y, window=10, poly=3, prominence=0.05,
         plt.plot(x, y_original, label="Raw Spectrum", color="lightgray", alpha=0.7)
     
     plt.plot(x, y_smooth, label="Smoothed Spectrum", color="blue", linewidth=2)
-    plt.plot(x[peaks], y_smooth[peaks], "ro", markersize=8, label="Detected Peaks")
+    
     
     color = "green"
     
@@ -324,40 +324,86 @@ def analyze_all_peaks(x, y, window=10, poly=3, prominence=0.05,
         peak_x = x[peak_idx]
         peak_y = y_smooth[peak_idx]
         
-        # Fit Gaussian around this peak only if peak_x is greater than 0.01
+        # Fit polynomial around this peak only if peak_x is greater than 0.075
         if peak_x > 0.075:
             fit_range = (x > peak_x - (x[-1] - x[0]) * 0.05) & (x < peak_x + (x[-1] - x[0]) * 0.05)
             x_fit = x[fit_range]
             y_fit = y[fit_range]
-            p0 = [peak_y, peak_x, (x_fit[-1] - x_fit[0]) / 6]
+            
+            # Initial guess for polynomial: a (negative for downward parabola), b, c
+            # For a peak, we want a negative quadratic coefficient
+            p0 = [-peak_y / ((x_fit[-1] - x_fit[0]) / 2)**2, 0, peak_y]
             
             try:
-                popt, _ = curve_fit(gaussian, x_fit, y_fit, p0=p0)
+                popt, pcov = curve_fit(polynomial_2nd_order, x_fit, y_fit, p0=p0)
                 
-                # Plot Gaussian fit
-                plt.plot(x_fit, gaussian(x_fit, *popt), "--", linewidth=2, color=color,
-                        label=f"Peak {idx+1} Fit (X={peak_x:.4f})")
+                # Calculate parameter errors (one standard deviation)
+                perr = np.sqrt(np.diag(pcov))
                 
-                # Find and plot peaks within the Gaussian fit
-                gaussian_peaks, _ = find_peaks(
-                    y_fit,
-                    height=np.max(y_fit) * prominence,
-                    distance=1
-                )
+                # Plot polynomial fit
+                plt.plot(x_fit, polynomial_2nd_order(x_fit, *popt), "--", linewidth=2, color=color,
+                        label=f"Smoothed data fit peak {idx+1}, Fit X={peak_x:.4f}")
                 
-                if len(gaussian_peaks) > 0:
-                    plt.plot(x_fit[gaussian_peaks], y_fit[gaussian_peaks], "x", linewidth=2, 
-                            color="red", markersize=10, markeredgewidth=2)
+                # Calculate and plot the maximum of the polynomial
+                # For y = a*x^2 + b*x + c, the vertex (maximum/minimum) is at x = -b/(2*a)
+                a, b, c = popt
+                a_err, b_err, c_err = perr
                 
-                # Store peak information
-                peak_info = {
-                    'peak_number': idx + 1,
-                    'peak_x': peak_x,
-                    'peak_y': peak_y,
-                    'gaussian_A': popt[0],
-                    'gaussian_mu': popt[1],
-                    'gaussian_sigma': popt[2]
-                }
+                if a != 0:
+                    x_max = -b / (2 * a)
+                    # Error propagation for x_max = -b/(2*a)
+                    # Using: σ²(f) = (∂f/∂a)²σ²(a) + (∂f/∂b)²σ²(b)
+                    # ∂x_max/∂a = b/(2*a²), ∂x_max/∂b = -1/(2*a)
+                    x_max_err = np.sqrt((b/(2*a**2))**2 * a_err**2 + (1/(2*a))**2 * b_err**2)
+                    
+                    # Only plot if the maximum is within the fit range
+                    if x_fit.min() <= x_max <= x_fit.max():
+                        y_max = polynomial_2nd_order(x_max, a, b, c)
+                        plt.plot(x_max, y_max, "ro", linewidth=2, 
+                                color="red", markersize=10, markeredgewidth=2, 
+                                label=f"Polynomial Peak fit X={x_max:.5f}±{x_max_err:.5f}")
+                        
+                        # Store peak information with polynomial maximum
+                        peak_info = {
+                            'peak_number': idx + 1,
+                            'peak_x': x_max,  # Use polynomial maximum
+                            'peak_x_err': x_max_err,
+                            'peak_y': y_max,  # Use polynomial maximum y-value
+                            'polynomial_a': popt[0],
+                            'polynomial_b': popt[1],
+                            'polynomial_c': popt[2],
+                            'polynomial_a_err': a_err,
+                            'polynomial_b_err': b_err,
+                            'polynomial_c_err': c_err
+                        }
+                    else:
+                        # Polynomial max outside fit range, use smoothed peak
+                        peak_info = {
+                            'peak_number': idx + 1,
+                            'peak_x': peak_x,
+                            'peak_x_err': None,
+                            'peak_y': peak_y,
+                            'polynomial_a': popt[0],
+                            'polynomial_b': popt[1],
+                            'polynomial_c': popt[2],
+                            'polynomial_a_err': a_err,
+                            'polynomial_b_err': b_err,
+                            'polynomial_c_err': c_err
+                        }
+                else:
+                    # a = 0, not a proper parabola
+                    peak_info = {
+                        'peak_number': idx + 1,
+                        'peak_x': peak_x,
+                        'peak_x_err': None,
+                        'peak_y': peak_y,
+                        'polynomial_a': popt[0],
+                        'polynomial_b': popt[1],
+                        'polynomial_c': popt[2],
+                        'polynomial_a_err': a_err,
+                        'polynomial_b_err': b_err,
+                        'polynomial_c_err': c_err
+                    }
                 all_peak_info.append(peak_info)
                 
             except RuntimeError:
@@ -365,22 +411,30 @@ def analyze_all_peaks(x, y, window=10, poly=3, prominence=0.05,
                 peak_info = {
                     'peak_number': idx + 1,
                     'peak_x': peak_x,
+                    'peak_x_err': None,
                     'peak_y': peak_y,
-                    'gaussian_A': None,
-                    'gaussian_mu': None,
-                    'gaussian_sigma': None
+                    'polynomial_a': None,
+                    'polynomial_b': None,
+                    'polynomial_c': None,
+                    'polynomial_a_err': None,
+                    'polynomial_b_err': None,
+                    'polynomial_c_err': None
                 }
                 all_peak_info.append(peak_info)
-                print(f"Warning: Gaussian fit failed for peak {idx+1} at X={peak_x:.4f}")
+                print(f"Warning: Polynomial fit failed for peak {idx+1} at X={peak_x:.4f}")
         else:
             # Skip fitting for low voltage peaks
             peak_info = {
                 'peak_number': idx + 1,
                 'peak_x': peak_x,
+                'peak_x_err': None,
                 'peak_y': peak_y,
-                'gaussian_A': None,
-                'gaussian_mu': None,
-                'gaussian_sigma': None
+                'polynomial_a': None,
+                'polynomial_b': None,
+                'polynomial_c': None,
+                'polynomial_a_err': None,
+                'polynomial_b_err': None,
+                'polynomial_c_err': None
             }
             all_peak_info.append(peak_info)
     
@@ -512,7 +566,7 @@ def find_phs_files(folder_path):
     return sorted(files)
 
 # ------------------------
-# Process all files in folder (UPDATED with save_csv)
+# Process all files in folder (UPDATED with polynomial fit and errors)
 # ------------------------
 def process_phs_folder(folder_path, save_results=True, save_plots=False, save_csv=False,
                     custom_save_path=None, normalise=True, phs_overlay=False, multi_channel=False):
@@ -598,10 +652,14 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False, save_cs
                     "File": Path(file).name,
                     "Peak_Number": peak_info['peak_number'],
                     "Peak_X": peak_info['peak_x'],
+                    "Peak_X_Err": peak_info['peak_x_err'],
                     "Peak_Y": peak_info['peak_y'],
-                    "Gaussian_A": peak_info['gaussian_A'],
-                    "Gaussian_Mu": peak_info['gaussian_mu'],
-                    "Gaussian_Sigma": peak_info['gaussian_sigma'],
+                    "Polynomial_a": peak_info['polynomial_a'],
+                    "Polynomial_b": peak_info['polynomial_b'],
+                    "Polynomial_c": peak_info['polynomial_c'],
+                    "Polynomial_a_err": peak_info['polynomial_a_err'],
+                    "Polynomial_b_err": peak_info['polynomial_b_err'],
+                    "Polynomial_c_err": peak_info['polynomial_c_err'],
                     "Runtime": runtime,
                     "StartDateTime": start_datetime,
                     "IntegrationTime": integration_time,
@@ -679,10 +737,14 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False, save_cs
                         "Channel": channel_name,
                         "Peak_Number": peak_info['peak_number'],
                         "Peak_X": peak_info['peak_x'],
+                        "Peak_X_Err": peak_info['peak_x_err'],
                         "Peak_Y": peak_info['peak_y'],
-                        "Gaussian_A": peak_info['gaussian_A'],
-                        "Gaussian_Mu": peak_info['gaussian_mu'],
-                        "Gaussian_Sigma": peak_info['gaussian_sigma'],
+                        "Polynomial_a": peak_info['polynomial_a'],
+                        "Polynomial_b": peak_info['polynomial_b'],
+                        "Polynomial_c": peak_info['polynomial_c'],
+                        "Polynomial_a_err": peak_info['polynomial_a_err'],
+                        "Polynomial_b_err": peak_info['polynomial_b_err'],
+                        "Polynomial_c_err": peak_info['polynomial_c_err'],
                         "Runtime": runtime,
                         "StartDateTime": start_datetime,
                         "IntegrationTime": integration_time,
@@ -732,10 +794,10 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False, save_cs
         
         # Display appropriate columns
         if multi_channel:
-            display_columns = ["File", "Channel", "Peak_Number", "Peak_X", "Peak_Y", 
+            display_columns = ["File", "Channel", "Peak_Number", "Peak_X", "Peak_X_Err", "Peak_Y", 
                             "Runtime", "StartDateTime", "normalised"]
         else:
-            display_columns = ["File", "Peak_Number", "Peak_X", "Peak_Y", 
+            display_columns = ["File", "Peak_Number", "Peak_X", "Peak_X_Err", "Peak_Y", 
                             "Runtime", "StartDateTime", "normalised"]
         
         existing_columns = [col for col in display_columns if col in df.columns]
@@ -751,9 +813,9 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False, save_cs
 if __name__ == "__main__":
     # Update these paths as needed
     folder_path = r"\\isis\shares\Detectors\Ben Thompson 2025-2026\Ben Thompson 2025-2025 Shared\Labs\Scintillating Tile Tests\dual_pmt_rig_251112\by_length\30mm\30mm_testing_260121"
-    custom_save_path = r"save_path_here"
+    custom_save_path = r"\\isis\shares\Detectors\Ben Thompson 2025-2026\Ben Thompson 2025-2025 Shared\Pictures\peakfinder_test_260130"
     
     # Process with multi-channel enabled and CSV saving
-    process_phs_folder(folder_path, save_results=False, save_plots=False, 
-                        save_csv=False, custom_save_path=custom_save_path, 
+    process_phs_folder(folder_path, save_results=True, save_plots=True, 
+                        save_csv=True, custom_save_path=custom_save_path, 
                         normalise=True, phs_overlay=True, multi_channel=False)
