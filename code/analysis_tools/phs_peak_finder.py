@@ -21,6 +21,39 @@ def polynomial_2nd_order(x, a, b, c):
     return a * x**2 + b * x + c
 
 # ------------------------
+# Extract ID from filename
+# ------------------------
+def extract_id_from_filename(filename):
+    """
+    Extract the ID from filename - the part after 'id' and before the next underscore
+    Example: 'sample_id123_data.txt' -> '123'
+    """
+    # Convert to string and get just the filename without path
+    filename = str(Path(filename).name)
+    
+    # Find 'id' in the filename (case insensitive)
+    id_pos = filename.lower().find('id')
+    
+    if id_pos == -1:
+        return None
+    
+    # Start after 'id'
+    start_pos = id_pos + 2
+    
+    # Find the next underscore after 'id'
+    underscore_pos = filename.find('_', start_pos)
+    
+    if underscore_pos == -1:
+        # No underscore found, take until the end (or file extension)
+        dot_pos = filename.find('.', start_pos)
+        if dot_pos == -1:
+            return filename[start_pos:]
+        else:
+            return filename[start_pos:dot_pos]
+    else:
+        return filename[start_pos:underscore_pos]
+
+# ------------------------
 # read .set file for Runtime and StartDateTime
 # ------------------------
 def read_set_file(data_file_path):
@@ -360,7 +393,7 @@ def analyze_all_peaks(x, y, window=10, poly=3, prominence=0.05,
                     if x_fit.min() <= x_max <= x_fit.max():
                         y_max = polynomial_2nd_order(x_max, a, b, c)
                         plt.plot(x_max, y_max, "ro", linewidth=2, 
-                                color="red", markersize=10, markeredgewidth=2, 
+                                color="red", markersize=6, markeredgewidth=2, 
                                 label=f"Polynomial Peak fit X={x_max:.5f}±{x_max_err:.5f}")
                         
                         # Store peak information with polynomial maximum
@@ -600,6 +633,9 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False, save_cs
     for i, file in enumerate(files, 1):
         print(f"Processing {i}/{len(files)}: {Path(file).name}")
         
+        # Extract ID from filename
+        file_id = extract_id_from_filename(Path(file).name)
+        
         if not multi_channel:
             # Single channel processing
             x, y = load_phs_file(file, multi_channel=False)
@@ -649,6 +685,7 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False, save_cs
             # Store each peak as a separate row
             for peak_info in all_peaks:
                 result = {
+                    "ID": file_id,
                     "File": Path(file).name,
                     "Peak_Number": peak_info['peak_number'],
                     "Peak_X": peak_info['peak_x'],
@@ -733,6 +770,7 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False, save_cs
                 # Store each peak as a separate row
                 for peak_info in all_peaks:
                     result = {
+                        "ID": file_id,
                         "File": Path(file).name,
                         "Channel": channel_name,
                         "Peak_Number": peak_info['peak_number'],
@@ -794,10 +832,10 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False, save_cs
         
         # Display appropriate columns
         if multi_channel:
-            display_columns = ["File", "Channel", "Peak_Number", "Peak_X", "Peak_X_Err", "Peak_Y", 
+            display_columns = ["ID", "File", "Channel", "Peak_Number", "Peak_X", "Peak_X_Err", "Peak_Y", 
                             "Runtime", "StartDateTime", "normalised"]
         else:
-            display_columns = ["File", "Peak_Number", "Peak_X", "Peak_X_Err", "Peak_Y", 
+            display_columns = ["ID", "File", "Peak_Number", "Peak_X", "Peak_X_Err", "Peak_Y", 
                             "Runtime", "StartDateTime", "normalised"]
         
         existing_columns = [col for col in display_columns if col in df.columns]
@@ -812,10 +850,10 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False, save_cs
 # ------------------------
 if __name__ == "__main__":
     # Update these paths as needed
-    folder_path = r"\\isis\shares\Detectors\Ben Thompson 2025-2026\Ben Thompson 2025-2025 Shared\Labs\Scintillating Tile Tests\dual_pmt_rig_251112\by_length\30mm\30mm_testing_260121"
-    custom_save_path = r"\\isis\shares\Detectors\Ben Thompson 2025-2026\Ben Thompson 2025-2025 Shared\Pictures\peakfinder_test_260130"
+    folder_path = r"\\isis\shares\Detectors\Ben Thompson 2025-2026\Ben Thompson 2025-2025 Shared\Labs\Scintillating Tile Tests\dual_pmt_rig_251112\by_length\30mm\30mm_for_peak_finder_260130"
+    custom_save_path = r"\\isis\shares\Detectors\Ben Thompson 2025-2026\Ben Thompson 2025-2025 Shared\Labs\Scintillating Tile Tests\peak_finding_plots_log\30mm\30mm_software_testing_260130"
     
     # Process with multi-channel enabled and CSV saving
-    process_phs_folder(folder_path, save_results=True, save_plots=True, 
-                        save_csv=True, custom_save_path=custom_save_path, 
+    process_phs_folder(folder_path, save_results=True, save_plots=False, 
+                        save_csv=False, custom_save_path=custom_save_path, 
                         normalise=True, phs_overlay=True, multi_channel=False)
