@@ -324,43 +324,56 @@ def analyze_all_peaks(x, y, window=10, poly=3, prominence=0.05,
         peak_x = x[peak_idx]
         peak_y = y_smooth[peak_idx]
         
-        # Fit Gaussian around this peak
-        fit_range = (x > peak_x - (x[-1] - x[0]) * 0.05) & (x < peak_x + (x[-1] - x[0]) * 0.05)
-        x_fit = x[fit_range]
-        y_fit = y[fit_range]
-        p0 = [peak_y, peak_x, (x_fit[-1] - x_fit[0]) / 6]
-        
-        try:
-            popt, _ = curve_fit(gaussian, x_fit, y_fit, p0=p0)
+        # Fit Gaussian around this peak only if peak_x is greater than 0.01
+        if peak_x > 0.075:
+            fit_range = (x > peak_x - (x[-1] - x[0]) * 0.05) & (x < peak_x + (x[-1] - x[0]) * 0.05)
+            x_fit = x[fit_range]
+            y_fit = y[fit_range]
+            p0 = [peak_y, peak_x, (x_fit[-1] - x_fit[0]) / 6]
             
-            # Plot Gaussian fit
-            plt.plot(x_fit, gaussian(x_fit, *popt), "--", linewidth=2, color=color,
-                    label=f"Peak {idx+1} Fit (X={peak_x:.4f})")
-            
-            # Find and plot peaks within the Gaussian fit
-            gaussian_peaks, _ = find_peaks(
-                y_fit,
-                height=np.max(y_fit) * prominence,
-                distance = 1
-            )
-            
-            if len(gaussian_peaks) > 0:
-                plt.plot(x_fit[gaussian_peaks], y_fit[gaussian_peaks], "x", linewidth=2, 
-                        color="red", markersize=10, markeredgewidth=2)
-            
-            # Store peak information
-            peak_info = {
-                'peak_number': idx + 1,
-                'peak_x': peak_x,
-                'peak_y': peak_y,
-                'gaussian_A': popt[0],
-                'gaussian_mu': popt[1],
-                'gaussian_sigma': popt[2]
-            }
-            all_peak_info.append(peak_info)
-            
-        except RuntimeError:
-            # If fit fails, still store the peak location
+            try:
+                popt, _ = curve_fit(gaussian, x_fit, y_fit, p0=p0)
+                
+                # Plot Gaussian fit
+                plt.plot(x_fit, gaussian(x_fit, *popt), "--", linewidth=2, color=color,
+                        label=f"Peak {idx+1} Fit (X={peak_x:.4f})")
+                
+                # Find and plot peaks within the Gaussian fit
+                gaussian_peaks, _ = find_peaks(
+                    y_fit,
+                    height=np.max(y_fit) * prominence,
+                    distance=1
+                )
+                
+                if len(gaussian_peaks) > 0:
+                    plt.plot(x_fit[gaussian_peaks], y_fit[gaussian_peaks], "x", linewidth=2, 
+                            color="red", markersize=10, markeredgewidth=2)
+                
+                # Store peak information
+                peak_info = {
+                    'peak_number': idx + 1,
+                    'peak_x': peak_x,
+                    'peak_y': peak_y,
+                    'gaussian_A': popt[0],
+                    'gaussian_mu': popt[1],
+                    'gaussian_sigma': popt[2]
+                }
+                all_peak_info.append(peak_info)
+                
+            except RuntimeError:
+                # If fit fails, still store the peak location
+                peak_info = {
+                    'peak_number': idx + 1,
+                    'peak_x': peak_x,
+                    'peak_y': peak_y,
+                    'gaussian_A': None,
+                    'gaussian_mu': None,
+                    'gaussian_sigma': None
+                }
+                all_peak_info.append(peak_info)
+                print(f"Warning: Gaussian fit failed for peak {idx+1} at X={peak_x:.4f}")
+        else:
+            # Skip fitting for low voltage peaks
             peak_info = {
                 'peak_number': idx + 1,
                 'peak_x': peak_x,
@@ -370,7 +383,6 @@ def analyze_all_peaks(x, y, window=10, poly=3, prominence=0.05,
                 'gaussian_sigma': None
             }
             all_peak_info.append(peak_info)
-            print(f"Warning: Gaussian fit failed for peak {idx+1} at X={peak_x:.4f}")
     
     # Create info text for the plot
     integration_info = format_integration_info(integration_time, is_integration_enabled)
