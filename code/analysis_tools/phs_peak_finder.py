@@ -173,8 +173,8 @@ def load_phs_file(file_path, multi_channel=False):
         if not multi_channel:
             # Original single channel behavior
             if data.shape[1] >= 2:
-                x = data.iloc[:, 4].values # changed to get channel b+d
-                y = data.iloc[:, 5].values
+                x = data.iloc[:, 0].values # changed to get channel b+d
+                y = data.iloc[:, 1].values
                 valid_mask = ~pd.isna(y)   # or y.notna() if y is a Series
                 return x[valid_mask], y[valid_mask]
             else:
@@ -327,15 +327,26 @@ def analyze_all_peaks(x, y, window=10, poly=3, prominence=0.05,
         # Fit Gaussian around this peak
         fit_range = (x > peak_x - (x[-1] - x[0]) * 0.05) & (x < peak_x + (x[-1] - x[0]) * 0.05)
         x_fit = x[fit_range]
-        y_fit = y_smooth[fit_range]
+        y_fit = y[fit_range]
         p0 = [peak_y, peak_x, (x_fit[-1] - x_fit[0]) / 6]
-
+        
         try:
             popt, _ = curve_fit(gaussian, x_fit, y_fit, p0=p0)
             
             # Plot Gaussian fit
             plt.plot(x_fit, gaussian(x_fit, *popt), "--", linewidth=2, color=color,
                     label=f"Peak {idx+1} Fit (X={peak_x:.4f})")
+            
+            # Find and plot peaks within the Gaussian fit
+            gaussian_peaks, _ = find_peaks(
+                y_fit,
+                height=np.max(y_fit) * prominence,
+                distance = 1
+            )
+            
+            if len(gaussian_peaks) > 0:
+                plt.plot(x_fit[gaussian_peaks], y_fit[gaussian_peaks], "x", linewidth=2, 
+                        color="red", markersize=10, markeredgewidth=2)
             
             # Store peak information
             peak_info = {
@@ -727,10 +738,10 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False, save_cs
 # ------------------------
 if __name__ == "__main__":
     # Update these paths as needed
-    folder_path = r"file_path_here"
+    folder_path = r"\\isis\shares\Detectors\Ben Thompson 2025-2026\Ben Thompson 2025-2025 Shared\Labs\Scintillating Tile Tests\dual_pmt_rig_251112\by_length\30mm\30mm_testing_260121"
     custom_save_path = r"save_path_here"
     
     # Process with multi-channel enabled and CSV saving
-    process_phs_folder(folder_path, save_results=True, save_plots=True, 
-                        save_csv=True, custom_save_path=custom_save_path, 
+    process_phs_folder(folder_path, save_results=False, save_plots=False, 
+                        save_csv=False, custom_save_path=custom_save_path, 
                         normalise=True, phs_overlay=True, multi_channel=False)
