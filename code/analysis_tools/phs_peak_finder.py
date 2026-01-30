@@ -850,10 +850,10 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False, save_cs
 # ------------------------
 if __name__ == "__main__":
     # Update these paths as needed
-    folder_path = r"\\isis\shares\Detectors\Ben Thompson 2025-2026\Ben Thompson 2025-2025 Shared\Labs\Scintillating Tile Tests\dual_pmt_rig_251112\by_length\30mm\30mm_for_peak_finder_260130"
-    custom_save_path = r"\\isis\shares\Detectors\Ben Thompson 2025-2026\Ben Thompson 2025-2025 Shared\Labs\Scintillating Tile Tests\peak_finding_plots_log\30mm\30mm_software_testing_260130"
+    folder_path = r"Folder Path here"
+    custom_save_path = r"Save Path Here"
     
     # Process with multi-channel enabled and CSV saving
-    process_phs_folder(folder_path, save_results=True, save_plots=False, 
+    process_phs_folder(folder_path, save_results=False, save_plots=False, 
                         save_csv=False, custom_save_path=custom_save_path, 
                         normalise=True, phs_overlay=True, multi_channel=False)
