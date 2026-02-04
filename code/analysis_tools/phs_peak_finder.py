@@ -438,7 +438,7 @@ def analyze_all_peaks(x, y, window=10, poly=3, prominence=0.05,
                 
                 # Plot polynomial fit
                 plt.plot(x_fit, polynomial_2nd_order(x_fit, *popt), "--", linewidth=2, color=color,
-                        label=f"Smoothed data fit peak {idx+1}, Fit X={peak_x:.4f}")
+                        label=f"Polynomial Fit")
                 
                 # Calculate and plot the maximum of the polynomial
                 # For y = a*x^2 + b*x + c, the vertex (maximum/minimum) is at x = -b/(2*a)
@@ -945,10 +945,10 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False, save_cs
 # ------------------------
 if __name__ == "__main__":
     # Update these paths as needed
-    folder_path = r"file path here"
-    custom_save_path = r"Save Path Here"
+    folder_path = r"\\isis\shares\Detectors\Ben Thompson 2025-2026\Ben Thompson 2025-2025 Shared\Labs\Scintillating Tile Tests\dual_pmt_rig_251112\calibration\error_of_system_260204"
+    custom_save_path = r"\\isis\shares\Detectors\Ben Thompson 2025-2026\Ben Thompson 2025-2025 Shared\Labs\Scintillating Tile Tests\peak_finding_plots_log\30mm\setup_err_estimation_260204"
     
     # Process with multi-channel enabled and CSV saving
-    process_phs_folder(folder_path, save_results=False, save_plots=False, 
-                        save_csv=False, custom_save_path=custom_save_path, 
+    process_phs_folder(folder_path, save_results=True, save_plots=True, 
+                        save_csv=True, custom_save_path=custom_save_path, 
                         normalise=True, phs_overlay=True, multi_channel=False)
