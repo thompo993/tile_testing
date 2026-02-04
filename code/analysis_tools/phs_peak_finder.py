@@ -945,7 +945,7 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False, save_cs
 # ------------------------
 if __name__ == "__main__":
     # Update these paths as needed
-    folder_path = r"C:\Users\thomp\OneDrive - University of Bristol\Phsics Undergraduate\Year 3 Year in Inustry\data_and_code\tile_testing\30mm_for_peak_finder_260130"
+    folder_path = r"file path here"
     custom_save_path = r"Save Path Here"
     
     # Process with multi-channel enabled and CSV saving
