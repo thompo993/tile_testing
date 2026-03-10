@@ -9,102 +9,62 @@ import os
 import glob
 import warnings
 from datetime import datetime
+from matplotlib.offsetbox import AnchoredText
 warnings.filterwarnings("ignore")
 
 # ------------------------
 # second-order polynomial function
 # ------------------------
 def polynomial_2nd_order(x, a, b, c):
-    """
-    second-order polynomial function: y = a*x^2 + b*x + c
-    """
     return a * x**2 + b * x + c
 
 # ------------------------
 # Gaussian function for fitting
 # ------------------------
 def gaussian(x, amplitude, mean, sigma):
-    """
-    Gaussian function: y = amplitude * exp(-(x - mean)^2 / (2 * sigma^2))
-    """
     return amplitude * np.exp(-(x - mean)**2 / (2 * sigma**2))
 
 # ------------------------
 # Calculate peak position and error using Gaussian fit
 # ------------------------
 def calculate_peak_statistics(x_data, y_data):
-    """
-    Fit a Gaussian to the data points and extract the peak position and error
-    using the covariance matrix from the fit.
-    
-    Parameters:
-    -----------
-    x_data : array
-        X-values (voltage) of data points in the fitting region
-    y_data : array
-        Y-values (counts) of data points in the fitting region
-    
-    Returns:
-    --------
-    mean : float
-        Mean (peak position) from Gaussian fit
-    mean_error : float
-        Error on the mean from the covariance matrix
-    """
-    # Remove any zero or negative counts
     valid_mask = y_data > 0
     x_valid = x_data[valid_mask]
     y_valid = y_data[valid_mask]
     
-    if len(x_valid) < 3:  # Need at least 3 points for Gaussian fit
+    if len(x_valid) < 3:
         return None, None
     
     try:
-        # Initial parameter guesses
         amplitude_guess = np.max(y_valid)
         mean_guess = x_valid[np.argmax(y_valid)]
-        sigma_guess = (x_valid[-1] - x_valid[0]) / 4  # Rough estimate
+        sigma_guess = (x_valid[-1] - x_valid[0]) / 4
         
         p0 = [amplitude_guess, mean_guess, sigma_guess]
-        
-        # Fit Gaussian
         popt, pcov = curve_fit(gaussian, x_valid, y_valid, p0=p0)
         
-        # Extract mean and its error from the covariance matrix
         mean = popt[1]
-        mean_error = np.sqrt(pcov[1, 1])  # Square root of diagonal element for mean parameter
+        mean_error = np.sqrt(pcov[1, 1])
         
         return mean, mean_error
         
-    except (RuntimeError, ValueError) as e:
-        # If Gaussian fit fails, return None
+    except (RuntimeError, ValueError):
         return None, None
 
 # ------------------------
 # Extract ID from filename
 # ------------------------
 def extract_id_from_filename(filename):
-    """
-    Extract the ID from filename - the part after 'id' and before the next underscore
-    Example: 'sample_id123_data.txt' -> '123'
-    """
-    # Convert to string and get just the filename without path
     filename = str(Path(filename).name)
-    
-    # Find 'id' in the filename (case insensitive)
     id_pos = filename.lower().find('id')
     
     if id_pos == -1:
         return None
     
-    # Start after 'id'
     start_pos = id_pos + 2
-    
-    # Find the next underscore after 'id'
     underscore_pos = filename.find('_', start_pos)
     
     if underscore_pos == -1:
-        # No underscore found, take until the end (or file extension)
         dot_pos = filename.find('.', start_pos)
         if dot_pos == -1:
             return filename[start_pos:]
@@ -117,10 +77,6 @@ def extract_id_from_filename(filename):
 # read .set file for Runtime and StartDateTime
 # ------------------------
 def read_set_file(data_file_path):
-    """
-    Read the associated .set file and extract Runtime, StartDateTime, and Integration settings
-    """
-    # Get the .set file path by changing the extension
     set_file_path = Path(data_file_path).with_suffix('.set')
     
     runtime = None
@@ -154,13 +110,11 @@ def read_set_file(data_file_path):
                     elif line.startswith('TriggerLevel[3]'):
                         trig_3 = line.split('=')[1]
                     
-                    
         except Exception as e:
             print(f"Error reading .set file {set_file_path}: {e}")
     else:
         print(f"No .set file found for {Path(data_file_path).name}")
     
-    # Check if divisions are present before asserting equality
     if division_1 is not None and division_3 is not None:
         division = float(division_1)
     elif division_1 is not None:
@@ -179,15 +133,11 @@ def read_set_file(data_file_path):
 # Format integration info for display
 # ------------------------
 def format_integration_info(integration_time, is_integration_enabled):
-    """
-    Format integration information for display in the info text
-    """
     if is_integration_enabled is None:
         return "Integration: Not specified"
     elif not is_integration_enabled:
         return "Integration: OFF"
     elif integration_time is not None:
-        # Try to format scientific notation nicely
         try:
             time_value = float(integration_time)
             if time_value >= 1:
@@ -203,15 +153,10 @@ def format_integration_info(integration_time, is_integration_enabled):
 # Parse runtime to seconds
 # ------------------------
 def parse_runtime_to_seconds(runtime_str):
-    """
-    Parse runtime string to seconds for normalisation
-    Supports formats like 'HH:MM:SS' or just seconds as string
-    """
     if runtime_str is None:
         return None
     
     try:
-        # If it contains colons, assume HH:MM:SS format
         if ':' in runtime_str:
             parts = runtime_str.split(':')
             if len(parts) == 3:
@@ -221,7 +166,6 @@ def parse_runtime_to_seconds(runtime_str):
                 minutes, seconds = map(float, parts)
                 return minutes * 60 + seconds
         else:
-            # Assume it's already in seconds
             return float(runtime_str)
     except (ValueError, TypeError):
         print(f"Could not parse runtime: {runtime_str}")
@@ -231,17 +175,12 @@ def parse_runtime_to_seconds(runtime_str):
 # Extract channel names from header
 # ------------------------
 def extract_channel_names(header_line):
-    """
-    Extract channel names from the header line
-    Expected format: "Volts:Ch_A	Counts:Ch_A		Volts:Ch_C	Counts:Ch_C		Volts:Ch_A+C	Counts:Ch_A+C"
-    """
     channel_names = []
     parts = header_line.split('\t')
     
     for part in parts:
         part = part.strip()
         if part.startswith('Counts:'):
-            # Extract channel name after "Counts:"
             channel_name = part.replace('Counts:', '')
             channel_names.append(channel_name)
     
@@ -255,27 +194,21 @@ def load_phs_file(file_path, multi_channel=False):
         file_ext = Path(file_path).suffix.lower()
 
         if file_ext in ['.txt', '.dat']:
-                data = pd.read_csv(file_path, sep="\t", header=0).dropna(axis=1, how="all")
+            data = pd.read_csv(file_path, sep="\t", header=0).dropna(axis=1, how="all")
         else:
             print(f"Unsupported file format: {file_ext}")
-            if multi_channel:
-                return None, None
-            else:
-                return None, None
+            return None, None
 
         if not multi_channel:
-            # Original single channel behavior
             if data.shape[1] >= 2:
-                x = data.iloc[:, 0].values # changed to get channel b+d
+                x = data.iloc[:, 0].values
                 y = data.iloc[:, 1].values
-                valid_mask = ~pd.isna(y)   # or y.notna() if y is a Series
+                valid_mask = ~pd.isna(y)
                 return x[valid_mask], y[valid_mask]
             else:
                 print(f"Warning: File {file_path} doesn't have at least 2 columns")
                 return None, None
         else:
-            # Multi-channel behavior
-            # Extract channel names from header
             header_line = None
             try:
                 with open(file_path, 'r') as f:
@@ -289,22 +222,19 @@ def load_phs_file(file_path, multi_channel=False):
                 print(f"Warning: No channel names found in {file_path}")
                 return None, None
             
-            # Extract data for each channel (pairs of voltage/counts columns)
             channels_data = {}
             col_idx = 0
             
             for channel_name in channel_names:
                 if col_idx + 1 < data.shape[1]:
-                    x = data.iloc[:, col_idx].values      # Voltage column
-                    y = data.iloc[:, col_idx + 1].values  # Counts column
-                    
-                    # Remove invalid data points
+                    x = data.iloc[:, col_idx].values
+                    y = data.iloc[:, col_idx + 1].values
                     valid_mask = ~pd.isna(y)
                     channels_data[channel_name] = {
                         'x': x[valid_mask],
                         'y': y[valid_mask]
                     }
-                    col_idx += 2  # Move to next channel pair
+                    col_idx += 2
                 else:
                     break
        
@@ -312,19 +242,13 @@ def load_phs_file(file_path, multi_channel=False):
             
     except Exception as e:
         print(f"Error loading file {file_path}: {e}")
-        if multi_channel:
-            return None, None
-        else:
-            return None, None
+        return None, None
 
 # ------------------------
 # Save plot data to CSV
 # ------------------------
 def save_plot_data_to_csv(x, y, y_smooth, peaks, save_path, file_name, channel_name=None, 
                           normalise=True, runtime_seconds=None):
-    """
-    Save the plot data (raw, smoothed, and peak locations) to a CSV file
-    """
     if save_path is None or file_name is None:
         return
     
@@ -337,14 +261,12 @@ def save_plot_data_to_csv(x, y, y_smooth, peaks, save_path, file_name, channel_n
     full_csv_path = os.path.join(save_path, csv_filename)
     
     try:
-        # Create DataFrame with plot data
         df_data = {
             'Voltage': x,
             'Counts_Raw': y,
             'Counts_Smoothed': y_smooth,
             'Is_Peak': [1 if i in peaks else 0 for i in range(len(x))]
         }
-        
         df = pd.DataFrame(df_data)
         df.to_csv(full_csv_path, index=False)
         print(f"Plot data CSV saved to: {full_csv_path}")
@@ -353,7 +275,32 @@ def save_plot_data_to_csv(x, y, y_smooth, peaks, save_path, file_name, channel_n
         print(f"Error saving plot data CSV: {e}")
 
 # ------------------------
-# Analyze ALL peaks in one file (UPDATED with data point statistics)
+# Determine best location for info box
+# ------------------------
+def _best_infobox_location(ax, y_smooth, x):
+    """
+    Compare the average normalised y-value in the left vs right quarter of the
+    x-range on the smoothed spectrum and return the AnchoredText loc string
+    for whichever side has more headroom (lower average counts).
+    Falls back to 'upper left' if the comparison cannot be made.
+    """
+    try:
+        x_min, x_max = x.min(), x.max()
+        quarter = (x_max - x_min) / 4.0
+
+        left_mask  = x <= x_min + quarter
+        right_mask = x >= x_max - quarter
+
+        y_max = y_smooth.max() if y_smooth.max() != 0 else 1.0
+        left_mean  = y_smooth[left_mask].mean()  / y_max if left_mask.any()  else 1.0
+        right_mean = y_smooth[right_mask].mean() / y_max if right_mask.any() else 1.0
+
+        return "upper left" if left_mean <= right_mean else "upper right"
+    except Exception:
+        return "upper left"
+
+# ------------------------
+# Analyze ALL peaks in one file
 # ------------------------
 def analyze_all_peaks(x, y, window=10, poly=3, prominence=0.05,
                       show_plot=True, save_plot=False, save_csv=False, save_path=None, file_name=None,
@@ -361,13 +308,13 @@ def analyze_all_peaks(x, y, window=10, poly=3, prominence=0.05,
                       is_integration_enabled=None, normalise=True, channel_name=None, 
                       division=1.0, trig_1=None, trig_3=None):
     """
-    Smooths data, finds ALL peaks, fits second-order polynomial to each, and calculates statistics from data points.
-    Returns a list of all peak information.
+    Smooths data, finds ALL peaks, fits second-order polynomial to each, and calculates
+    statistics from data points. Returns a list of all peak information.
     """
     # Parse runtime for normalisation
     runtime_seconds = parse_runtime_to_seconds(runtime) if runtime else None
     
-    # normalise data if requested and runtime is available
+    # Normalise data if requested and runtime is available
     y_original = y.copy()
     if normalise and runtime_seconds and runtime_seconds > 0:
         y = y / runtime_seconds
@@ -394,22 +341,21 @@ def analyze_all_peaks(x, y, window=10, poly=3, prominence=0.05,
     # Save plot data to CSV if requested
     if save_csv and save_path and file_name:
         save_plot_data_to_csv(x, y, y_smooth, peaks, save_path, file_name, 
-                            channel_name, normalise, runtime_seconds)
+                              channel_name, normalise, runtime_seconds)
 
-    # Store information for all peaks
     all_peak_info = []
     
-    # Create the plot
-    plt.figure(figsize=(12, 8))
+    # ---------------------------------------------------------------
+    # Create the plot — use fig, ax so ax is always available
+    # ---------------------------------------------------------------
+    fig, ax = plt.subplots(figsize=(12, 8))
     
-    # Plot original data
     if normalise and runtime_seconds:
-        plt.plot(x, y, label="normalised Spectrum", color="lightblue", alpha=0.7, linewidth=1.5)
+        ax.plot(x, y, label="normalised Spectrum", color="lightblue", alpha=0.7, linewidth=1.5)
     else:
-        plt.plot(x, y_original, label="Raw Spectrum", color="lightgray", alpha=0.7)
+        ax.plot(x, y_original, label="Raw Spectrum", color="lightgray", alpha=0.7)
     
-    plt.plot(x, y_smooth, label="Smoothed Spectrum", color="blue", linewidth=2)
-    
+    ax.plot(x, y_smooth, label="Smoothed Spectrum", color="blue", linewidth=2)
     
     color = "green"
     
@@ -417,56 +363,41 @@ def analyze_all_peaks(x, y, window=10, poly=3, prominence=0.05,
         peak_x = x[peak_idx]
         peak_y = y_smooth[peak_idx]
         
-        # Fit polynomial around this peak only if peak_x is greater than 0.075
-        if peak_x > 0.075:
+        if peak_x > 0.05:
             fit_range = (x > peak_x - (x[-1] - x[0]) * 0.05) & (x < peak_x + (x[-1] - x[0]) * 0.05)
             x_fit = x[fit_range]
             y_fit = y[fit_range]
             
-            # Calculate statistics from data points in the fitting region
             data_mean, data_mean_err = calculate_peak_statistics(x_fit, y_fit)
             
-            # Initial guess for polynomial: a (negative for downward parabola), b, c
-            # For a peak, we want a negative quadratic coefficient
             p0 = [-peak_y / ((x_fit[-1] - x_fit[0]) / 2)**2, 0, peak_y]
             
             try:
                 popt, pcov = curve_fit(polynomial_2nd_order, x_fit, y_fit, p0=p0)
-                
-                # Calculate parameter errors (one standard deviation)
                 perr = np.sqrt(np.diag(pcov))
                 
-                # Plot polynomial fit
-                plt.plot(x_fit, polynomial_2nd_order(x_fit, *popt), "--", linewidth=2, color=color,
+                ax.plot(x_fit, polynomial_2nd_order(x_fit, *popt), "--", linewidth=2, color=color,
                         label=f"Polynomial Fit")
                 
-                # Calculate and plot the maximum of the polynomial
-                # For y = a*x^2 + b*x + c, the vertex (maximum/minimum) is at x = -b/(2*a)
                 a, b, c = popt
                 a_err, b_err, c_err = perr
                 
                 if a != 0:
                     x_max_poly = -b / (2 * a)
-                    # Error propagation for x_max = -b/(2*a)
-                    # Using: σ²(f) = (∂f/∂a)²σ²(a) + (∂f/∂b)²σ²(b)
-                    # ∂x_max/∂a = b/(2*a²), ∂x_max/∂b = -1/(2*a)
                     x_max_poly_err = np.sqrt((b/(2*a**2))**2 * a_err**2 + (1/(2*a))**2 * b_err**2)
                     
-                    # Only plot if the maximum is within the fit range
                     if x_fit.min() <= x_max_poly <= x_fit.max():
                         y_max = polynomial_2nd_order(x_max_poly, a, b, c)
-                        plt.plot(x_max_poly, y_max, "ro", linewidth=2, 
+                        ax.plot(x_max_poly, y_max, "ro", linewidth=2, 
                                 color="red", markersize=6, markeredgewidth=2, 
                                 label=f"Polynomial Peak fit X={x_max_poly:.5f}±{x_max_poly_err:.5f}")
                         
-                        # Plot Gaussian fit peak if available
                         if data_mean is not None and data_mean_err is not None:
                             y_at_data_mean = polynomial_2nd_order(data_mean, a, b, c)
-                            plt.plot(data_mean, y_at_data_mean, "s", 
+                            ax.plot(data_mean, y_at_data_mean, "s", 
                                     color="purple", markersize=8, markeredgewidth=2,
                                     label=f"Gaussian Fit X={data_mean:.5f}±{data_mean_err:.5f}")
                         
-                        # Store peak information with both polynomial and data statistics
                         peak_info = {
                             'peak_number': idx + 1,
                             'peak_x_poly': x_max_poly,
@@ -474,16 +405,11 @@ def analyze_all_peaks(x, y, window=10, poly=3, prominence=0.05,
                             'peak_x_data_mean': data_mean,
                             'peak_x_data_mean_err': data_mean_err,
                             'peak_y': y_max,
-                            'polynomial_a': popt[0],
-                            'polynomial_b': popt[1],
-                            'polynomial_c': popt[2],
-                            'polynomial_a_err': a_err,
-                            'polynomial_b_err': b_err,
-                            'polynomial_c_err': c_err,
+                            'polynomial_a': popt[0], 'polynomial_b': popt[1], 'polynomial_c': popt[2],
+                            'polynomial_a_err': a_err, 'polynomial_b_err': b_err, 'polynomial_c_err': c_err,
                             'num_data_points': len(x_fit)
                         }
                     else:
-                        # Polynomial max outside fit range, use smoothed peak
                         peak_info = {
                             'peak_number': idx + 1,
                             'peak_x_poly': peak_x,
@@ -491,16 +417,11 @@ def analyze_all_peaks(x, y, window=10, poly=3, prominence=0.05,
                             'peak_x_data_mean': data_mean,
                             'peak_x_data_mean_err': data_mean_err,
                             'peak_y': peak_y,
-                            'polynomial_a': popt[0],
-                            'polynomial_b': popt[1],
-                            'polynomial_c': popt[2],
-                            'polynomial_a_err': a_err,
-                            'polynomial_b_err': b_err,
-                            'polynomial_c_err': c_err,
+                            'polynomial_a': popt[0], 'polynomial_b': popt[1], 'polynomial_c': popt[2],
+                            'polynomial_a_err': a_err, 'polynomial_b_err': b_err, 'polynomial_c_err': c_err,
                             'num_data_points': len(x_fit)
                         }
                 else:
-                    # a = 0, not a proper parabola
                     peak_info = {
                         'peak_number': idx + 1,
                         'peak_x_poly': peak_x,
@@ -508,18 +429,13 @@ def analyze_all_peaks(x, y, window=10, poly=3, prominence=0.05,
                         'peak_x_data_mean': data_mean,
                         'peak_x_data_mean_err': data_mean_err,
                         'peak_y': peak_y,
-                        'polynomial_a': popt[0],
-                        'polynomial_b': popt[1],
-                        'polynomial_c': popt[2],
-                        'polynomial_a_err': a_err,
-                        'polynomial_b_err': b_err,
-                        'polynomial_c_err': c_err,
+                        'polynomial_a': popt[0], 'polynomial_b': popt[1], 'polynomial_c': popt[2],
+                        'polynomial_a_err': a_err, 'polynomial_b_err': b_err, 'polynomial_c_err': c_err,
                         'num_data_points': len(x_fit)
                     }
                 all_peak_info.append(peak_info)
                 
             except RuntimeError:
-                # If fit fails, still store the peak location and data statistics
                 peak_info = {
                     'peak_number': idx + 1,
                     'peak_x_poly': peak_x,
@@ -527,18 +443,14 @@ def analyze_all_peaks(x, y, window=10, poly=3, prominence=0.05,
                     'peak_x_data_mean': data_mean,
                     'peak_x_data_mean_err': data_mean_err,
                     'peak_y': peak_y,
-                    'polynomial_a': None,
-                    'polynomial_b': None,
-                    'polynomial_c': None,
-                    'polynomial_a_err': None,
-                    'polynomial_b_err': None,
-                    'polynomial_c_err': None,
+                    'polynomial_a': None, 'polynomial_b': None, 'polynomial_c': None,
+                    'polynomial_a_err': None, 'polynomial_b_err': None, 'polynomial_c_err': None,
                     'num_data_points': len(x_fit) if len(x_fit) > 0 else 0
                 }
                 all_peak_info.append(peak_info)
                 print(f"Warning: Polynomial fit failed for peak {idx+1} at X={peak_x:.4f}")
         else:
-            # Skip fitting for low voltage peaks
+            # Skip fitting for low-voltage peaks
             peak_info = {
                 'peak_number': idx + 1,
                 'peak_x_poly': peak_x,
@@ -546,44 +458,63 @@ def analyze_all_peaks(x, y, window=10, poly=3, prominence=0.05,
                 'peak_x_data_mean': None,
                 'peak_x_data_mean_err': None,
                 'peak_y': peak_y,
-                'polynomial_a': None,
-                'polynomial_b': None,
-                'polynomial_c': None,
-                'polynomial_a_err': None,
-                'polynomial_b_err': None,
-                'polynomial_c_err': None,
+                'polynomial_a': None, 'polynomial_b': None, 'polynomial_c': None,
+                'polynomial_a_err': None, 'polynomial_b_err': None, 'polynomial_c_err': None,
                 'num_data_points': 0
             }
             all_peak_info.append(peak_info)
-    
-    # Create info text for the plot
+
+    # ---------------------------------------------------------------
+    # Build info text box AFTER the loop (always rendered)
+    # ---------------------------------------------------------------
     integration_info = format_integration_info(integration_time, is_integration_enabled)
-    info_text = f'Start DateTime: {start_datetime}\n'
-    info_text += f'Runtime: {runtime}\n'
+
+    info_text = f"Start DateTime: {start_datetime}\n"
+    info_text += f"Runtime: {runtime}\n"
     if division is not None:
-        info_text += f'mV Per Division: {division*100:.2f}\n'
-    info_text += f'{normalisation_note_runtime}\n'
-    info_text += f'Trigger Level Ch1: {trig_1} mV\n'
-    info_text += f'Trigger Level Ch3: {trig_3} mV\n'
+        info_text += f"mV Per Division: {division * 100:.2f}\n"
+    info_text += f"{normalisation_note_runtime}\n"
+    info_text += f"Trigger Level Ch1: {trig_1} mV\n"
+    info_text += f"Trigger Level Ch3: {trig_3} mV\n"
     info_text += integration_info
-    info_text += f'\nTotal Peaks Detected: {len(peaks)}' 
+    info_text += f"\nTotal Peaks Detected: {len(peaks)}"
     if channel_name:
-        info_text += f'\nChannel: {channel_name}'
-    
-    plt.figtext(0.76, 0.63, info_text, fontsize=10, 
-                bbox=dict(boxstyle="round,pad=0.5", facecolor="lightgray", alpha=0.8))
-    
-    plt.xlabel("Voltage Output [V]", fontsize=12)
-    plt.ylabel(y_label, fontsize=12)
-    
+        info_text += f"\nChannel: {channel_name}"
+
+    # Choose the corner with the least spectral activity
+    infobox_loc = _best_infobox_location(ax, y_smooth, x)
+
+    anchored = AnchoredText(
+        info_text,
+        loc=infobox_loc,
+        prop={"size": 10},
+        frameon=True
+    )
+    anchored.patch.set_boxstyle("round,pad=0.5")
+    anchored.patch.set_facecolor("lightgray")
+    anchored.patch.set_alpha(0.8)
+    ax.add_artist(anchored)
+
+    # Legend goes to whichever upper corner the info box is NOT in
+    legend_loc = "upper right" if infobox_loc == "upper left" else "upper left"
+
+    ax.set_xlabel("Voltage Output [V]", fontsize=12)
+    ax.set_ylabel(y_label, fontsize=12)
+
     title_suffix = f" - {channel_name}" if channel_name else ""
-    plt.title(f"All Peaks Detection: {file_name if file_name else 'Unknown File'}{title_suffix}", 
-                fontsize=14, fontweight='bold')
-    plt.legend(fontsize=9, loc='best')
-    plt.grid(True, alpha=0.3)
+    ax.set_title(
+        f"All Peaks Detection: {file_name if file_name else 'Unknown File'}{title_suffix}",
+        fontsize=14,
+        fontweight="bold"
+    )
+
+    ax.legend(fontsize=9, loc=legend_loc)
+    ax.grid(True, alpha=0.3)
     plt.tight_layout()
 
+    # ---------------------------------------------------------------
     # Save plot if requested
+    # ---------------------------------------------------------------
     if save_plot and save_path and file_name:
         os.makedirs(save_path, exist_ok=True)
         timestamp = datetime.now().strftime("%y%m%d_%H%M%S")
@@ -610,16 +541,12 @@ def analyze_all_peaks(x, y, window=10, poly=3, prominence=0.05,
 # Create overlay plot of all spectra
 # ------------------------
 def create_phs_overlay(spectra_data, save_path=None, normalise=True):
-    """
-    Create an overlay plot of all PHS spectra
-    """
     if not spectra_data:
         print("No spectra data available for overlay plot.")
         return
     
     plt.figure(figsize=(14, 10))
     
-    # choose tab10 for up to 10 spectra, otherwise viridis for more
     n = min(len(spectra_data), 10)
     colors = cm.get_cmap("tab10")(np.linspace(0, 1, n))
     if len(spectra_data) > 10:
@@ -632,13 +559,11 @@ def create_phs_overlay(spectra_data, save_path=None, normalise=True):
         runtime = spectrum['runtime']
         channel = spectrum.get('channel', '')
         
-        linestyle = '-' if len(spectra_data) <= 10 else '-'
         alpha = 0.7 if len(spectra_data) <= 5 else 0.6
         linewidth = 1.5 if len(spectra_data) <= 10 else 1.0
         
         label = f"{filename}" + (f" - {channel}" if channel else "")
-        plt.plot(x, y, color=colors[i], alpha=alpha, linewidth=linewidth,
-                linestyle=linestyle, label=label)
+        plt.plot(x, y, color=colors[i], alpha=alpha, linewidth=linewidth, label=label)
     
     y_label = "Counts/second" if normalise else "Counts"
     plt.xlabel("Voltage Output", fontsize=12)
@@ -684,13 +609,10 @@ def find_phs_files(folder_path):
     return sorted(files)
 
 # ------------------------
-# Process all files in folder (UPDATED with data point statistics)
+# Process all files in folder
 # ------------------------
 def process_phs_folder(folder_path, save_results=True, save_plots=False, save_csv=False,
                     custom_save_path=None, normalise=True, phs_overlay=False, multi_channel=False):
-    """
-    Process all PHS files in a folder and extract ALL peaks.
-    """
     files = find_phs_files(folder_path)
     if not files:
         print("No valid PHS data files found.")
@@ -718,11 +640,9 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False, save_cs
     for i, file in enumerate(files, 1):
         print(f"Processing {i}/{len(files)}: {Path(file).name}")
         
-        # Extract ID from filename
         file_id = extract_id_from_filename(Path(file).name)
         
         if not multi_channel:
-            # Single channel processing
             x, y = load_phs_file(file, multi_channel=False)
             if x is None or y is None:
                 print(f"Skipping file: {file}")
@@ -745,7 +665,7 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False, save_cs
                     'filename': Path(file).name,
                     'runtime': runtime
                 })
-            # Get ALL peaks
+
             all_peaks = analyze_all_peaks(
                 x, y,
                 show_plot=True,
@@ -767,7 +687,6 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False, save_cs
                 print(f"No peaks found in {file}")
                 continue
 
-            # Store each peak as a separate row
             for peak_info in all_peaks:
                 result = {
                     "ID": file_id,
@@ -799,7 +718,6 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False, save_cs
             print(f"{integration_info}\n")
         
         else:
-            # Multi-channel processing
             channels_data, channel_names = load_phs_file(file, multi_channel=True)
             if channels_data is None or not channel_names:
                 print(f"Skipping file: {file}")
@@ -816,14 +734,12 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False, save_cs
                     
                 x = channels_data[channel_name]['x']
                 y = channels_data[channel_name]['y']
-                
                 y = pd.to_numeric(pd.Series(y), errors='coerce').to_numpy(dtype=float)
                 
                 if phs_overlay:
                     y_overlay = y.copy()
                     if normalise and runtime_seconds and runtime_seconds > 0:
                         y_overlay = y_overlay / runtime_seconds
-                    
                     spectra_data.append({
                         'x': x.copy(),
                         'y': y_overlay,
@@ -832,7 +748,6 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False, save_cs
                         'channel': channel_name
                     })
                 
-                # Get ALL peaks for this channel
                 all_peaks = analyze_all_peaks(
                     x, y,
                     show_plot=True,
@@ -855,7 +770,6 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False, save_cs
                     print(f"No peaks found in {channel_name}")
                     continue
                 
-                # Store each peak as a separate row
                 for peak_info in all_peaks:
                     result = {
                         "ID": file_id,
@@ -888,12 +802,10 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False, save_cs
             integration_info = format_integration_info(integration_time, is_integration_enabled)
             print(f"{integration_info}\n")
 
-    # Create overlay plot if requested
     if phs_overlay and spectra_data:
         print("\nCreating PHS spectra overlay plot...")
         create_phs_overlay(spectra_data, save_path=save_path, normalise=normalise)
 
-    # Save summary CSV with ALL peaks
     if save_results and results:
         timestamp = datetime.now().strftime("%y%m%d_%H%M%S")
         norm_suffix = "_normalised" if normalise else "_raw"
@@ -907,7 +819,6 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False, save_cs
         except Exception as e:
             print(f"Error saving results CSV: {e}")
 
-    # Print results table to console
     if results:
         df = pd.DataFrame(results)
         print("\n" + "="*80)
@@ -921,17 +832,16 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False, save_cs
             print("(Raw counts - no normalisation)")
         print("="*80)
         
-        # Display appropriate columns
         if multi_channel:
             display_columns = ["ID", "File", "Channel", "Peak_Number", 
-                            "Peak_X_Gaussian", "Peak_X_Gaussian_Err",
-                            "Peak_X_Poly", "Peak_X_Poly_Err", "Peak_Y", 
-                            "Num_Data_Points", "Runtime", "StartDateTime", "normalised"]
+                               "Peak_X_Gaussian", "Peak_X_Gaussian_Err",
+                               "Peak_X_Poly", "Peak_X_Poly_Err", "Peak_Y", 
+                               "Num_Data_Points", "Runtime", "StartDateTime", "normalised"]
         else:
             display_columns = ["ID", "File", "Peak_Number", 
-                            "Peak_X_Gaussian", "Peak_X_Gaussian_Err",
-                            "Peak_X_Poly", "Peak_X_Poly_Err", "Peak_Y", 
-                            "Num_Data_Points", "Runtime", "StartDateTime", "normalised"]
+                               "Peak_X_Gaussian", "Peak_X_Gaussian_Err",
+                               "Peak_X_Poly", "Peak_X_Poly_Err", "Peak_Y", 
+                               "Num_Data_Points", "Runtime", "StartDateTime", "normalised"]
         
         existing_columns = [col for col in display_columns if col in df.columns]
         print(df[existing_columns].to_string(index=False))
@@ -944,11 +854,9 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False, save_cs
 # Example usage
 # ------------------------
 if __name__ == "__main__":
-    # Update these paths as needed
-    folder_path = r"\\isis\shares\Detectors\Ben Thompson 2025-2026\Ben Thompson 2025-2025 Shared\Labs\Scintillating Tile Tests\dual_pmt_rig_251112\calibration\error_of_system_260204"
-    custom_save_path = r"\\isis\shares\Detectors\Ben Thompson 2025-2026\Ben Thompson 2025-2025 Shared\Labs\Scintillating Tile Tests\peak_finding_plots_log\30mm\setup_err_estimation_260204"
+    folder_path = r"\\isis\shares\Detectors\Ben Thompson 2025-2026\Ben Thompson 2025-2025 Shared\Labs\scintillating_tiles\dual_pmt_rig_251112\calibration\260309\LHS"
+    custom_save_path = r"\\isis\shares\Detectors\Ben Thompson 2025-2026\Ben Thompson 2025-2025 Shared\Labs\scintillating_tiles\log\30mm\30mm_gainmatching_260310\LHS"
     
-    # Process with multi-channel enabled and CSV saving
     process_phs_folder(folder_path, save_results=True, save_plots=True, 
                         save_csv=True, custom_save_path=custom_save_path, 
                         normalise=True, phs_overlay=True, multi_channel=False)
