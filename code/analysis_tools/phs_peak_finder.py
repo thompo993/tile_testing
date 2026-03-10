@@ -277,7 +277,7 @@ def save_plot_data_to_csv(x, y, y_smooth, peaks, save_path, file_name, channel_n
 # ------------------------
 # Determine best location for info box
 # ------------------------
-def _best_infobox_location(ax, y_smooth, x):
+def best_infobox_location(ax, y_smooth, x):
     """
     Compare the average normalised y-value in the left vs right quarter of the
     x-range on the smoothed spectrum and return the AnchoredText loc string
@@ -465,7 +465,7 @@ def analyze_all_peaks(x, y, window=10, poly=3, prominence=0.05,
             all_peak_info.append(peak_info)
 
     # ---------------------------------------------------------------
-    # Build info text box AFTER the loop (always rendered)
+    # Build info text box
     # ---------------------------------------------------------------
     integration_info = format_integration_info(integration_time, is_integration_enabled)
 
@@ -482,7 +482,7 @@ def analyze_all_peaks(x, y, window=10, poly=3, prominence=0.05,
         info_text += f"\nChannel: {channel_name}"
 
     # Choose the corner with the least spectral activity
-    infobox_loc = _best_infobox_location(ax, y_smooth, x)
+    infobox_loc = best_infobox_location(ax, y_smooth, x)
 
     anchored = AnchoredText(
         info_text,
