@@ -417,8 +417,8 @@ def analyze_all_peaks(x, y, window=10, poly=3, prominence=0.05,
         peak_x = x[peak_idx]
         peak_y = y_smooth[peak_idx]
         
-        # Fit polynomial around this peak only if peak_x is greater than 0.075
-        if peak_x > 0.075:
+        # Fit polynomial around this peak only if peak_x is greater than 0.005
+        if peak_x > 0.005:
             fit_range = (x > peak_x - (x[-1] - x[0]) * 0.05) & (x < peak_x + (x[-1] - x[0]) * 0.05)
             x_fit = x[fit_range]
             y_fit = y[fit_range]
@@ -570,7 +570,7 @@ def analyze_all_peaks(x, y, window=10, poly=3, prominence=0.05,
     if channel_name:
         info_text += f'\nChannel: {channel_name}'
     
-    plt.figtext(0.76, 0.63, info_text, fontsize=10, 
+    plt.figtext(0.76, 0.5, info_text, fontsize=10, 
                 bbox=dict(boxstyle="round,pad=0.5", facecolor="lightgray", alpha=0.8))
     
     plt.xlabel("Voltage Output [V]", fontsize=12)
@@ -945,10 +945,10 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False, save_cs
 # ------------------------
 if __name__ == "__main__":
     # Update these paths as needed
-    folder_path = r"\\isis\shares\Detectors\Ben Thompson 2025-2026\Ben Thompson 2025-2025 Shared\Labs\Scintillating Tile Tests\dual_pmt_rig_251112\calibration\error_of_system_260204"
-    custom_save_path = r"\\isis\shares\Detectors\Ben Thompson 2025-2026\Ben Thompson 2025-2025 Shared\Labs\Scintillating Tile Tests\peak_finding_plots_log\30mm\setup_err_estimation_260204"
+        folder_path = r"\\isis\shares\Detectors\Ben Thompson 2025-2026\Ben Thompson 2025-2025 Shared\Labs\scintillating_tiles\dual_pmt_rig_251112\calibration\260309\RHS"
+        custom_save_path = r"\\isis\shares\Detectors\Ben Thompson 2025-2026\Ben Thompson 2025-2025 Shared\Labs\scintillating_tiles\log\30mm\30mm_gainmatching_260310\RHS"
     
-    # Process with multi-channel enabled and CSV saving
-    process_phs_folder(folder_path, save_results=True, save_plots=True, 
-                        save_csv=True, custom_save_path=custom_save_path, 
-                        normalise=True, phs_overlay=True, multi_channel=False)
+# Process with multi-channel enabled and CSV saving
+process_phs_folder(folder_path, save_results=True, save_plots=True, 
+                    save_csv=True, custom_save_path=custom_save_path, 
+                    normalise=True, phs_overlay=True, multi_channel=False)
