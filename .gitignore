@@ -3,7 +3,7 @@
 *.jpg
 *.jpeg
 *.svg
-
+*.venv
 *.ipynb
 # Ignore plots folder
 /Figures/

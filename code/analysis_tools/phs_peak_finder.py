@@ -250,7 +250,15 @@ def extract_channel_names(header_line):
 # ------------------------
 # Load PHS data (modified for multi-channel)
 # ------------------------
-def load_phs_file(file_path, multi_channel=False):
+def load_phs_file(file_path, multi_channel=False, tile_30mm=True):
+    if tile_30mm is True:
+        voltage_col, counts_col = 0, 1
+    elif tile_30mm is False:
+        voltage_col, counts_col = 4, 5
+    else:
+        print(f"Warning: Invalid tile_30mm value {tile_30mm}, defaulting to 0/1 columns")
+        voltage_col, counts_col = 0, 1
+
     try:
         file_ext = Path(file_path).suffix.lower()
 
@@ -265,13 +273,18 @@ def load_phs_file(file_path, multi_channel=False):
 
         if not multi_channel:
             # Original single channel behavior
-            if data.shape[1] >= 2:
-                x = data.iloc[:, 0].values # changed to get channel b+d
-                y = data.iloc[:, 1].values
+            required_cols = max(voltage_col, counts_col) + 1
+            if data.shape[1] >= required_cols:
+                x = data.iloc[:, voltage_col].values
+                y = data.iloc[:, counts_col].values
                 valid_mask = ~pd.isna(y)   # or y.notna() if y is a Series
                 return x[valid_mask], y[valid_mask]
             else:
-                print(f"Warning: File {file_path} doesn't have at least 2 columns")
+                print(
+                    f"Warning: File {file_path} has {data.shape[1]} columns, "
+                    f"but tile_30mm={tile_30mm} requires at least {required_cols} columns "
+                    f"(using indices {voltage_col}, {counts_col})"
+                )
                 return None, None
         else:
             # Multi-channel behavior
@@ -687,7 +700,7 @@ def find_phs_files(folder_path):
 # Process all files in folder (UPDATED with data point statistics)
 # ------------------------
 def process_phs_folder(folder_path, save_results=True, save_plots=False, save_csv=False,
-                    custom_save_path=None, normalise=True, phs_overlay=False, multi_channel=False):
+                    custom_save_path=None, normalise=True, phs_overlay=False, multi_channel=False, tile_30mm=True):
     """
     Process all PHS files in a folder and extract ALL peaks.
     """
@@ -723,7 +736,7 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False, save_cs
         
         if not multi_channel:
             # Single channel processing
-            x, y = load_phs_file(file, multi_channel=False)
+            x, y = load_phs_file(file, multi_channel=False, tile_30mm=tile_30mm)
             if x is None or y is None:
                 print(f"Skipping file: {file}")
                 continue
@@ -945,10 +958,11 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False, save_cs
 # ------------------------
 if __name__ == "__main__":
     # Update these paths as needed
-        folder_path = r"\\isis\shares\Detectors\Ben Thompson 2025-2026\Ben Thompson 2025-2025 Shared\Labs\scintillating_tiles\dual_pmt_rig_251112\calibration\260309\RHS"
-        custom_save_path = r"\\isis\shares\Detectors\Ben Thompson 2025-2026\Ben Thompson 2025-2025 Shared\Labs\scintillating_tiles\log\30mm\30mm_gainmatching_260310\RHS"
+    folder_path = r"C:\path\to\phs\data"
+    custom_save_path = r"C:\path\to\save\results"
     
 # Process with multi-channel enabled and CSV saving
 process_phs_folder(folder_path, save_results=True, save_plots=True, 
                     save_csv=True, custom_save_path=custom_save_path, 
-                    normalise=True, phs_overlay=True, multi_channel=False)
+                    normalise=True, phs_overlay=True, multi_channel=False,
+                      tile_30mm = False)
