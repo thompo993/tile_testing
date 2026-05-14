@@ -26,12 +26,12 @@ def plot_2d_files(folder_path, save_path):
 
         if "lhs" in file_name.lower():
             print("Identified as LHS file")
-            b_hand = "LHS"
-            d_hand = "RHS"
+            b_hand = "LHS Stud"
+            d_hand = "RHS Stud"
         elif "rhs" in file_name.lower():
             print("Identified as RHS file")
-            b_hand = "RHS"
-            d_hand = "LHS"
+            b_hand = "RHS Stud"
+            d_hand = "LHS Stud"
         else:
             b_hand = ""
             d_hand = ""
@@ -47,10 +47,16 @@ def plot_2d_files(folder_path, save_path):
         plt.figure(figsize=(10, 8))
         plt.imshow(data, cmap='viridis', origin='lower', aspect='auto')   
         plt.colorbar(label='Intensity')
-        plt.xlabel("B ({b_hand} PMT)".format(b_hand=b_hand))
-        plt.ylabel("D ({d_hand} PMT)".format(d_hand=d_hand))
+        plt.xlabel("{b_hand} (Ch_B) [A.U]".format(b_hand=b_hand))
+        plt.ylabel("{d_hand} (Ch_D) [A.U]".format(d_hand=d_hand))
         plt.title(file_name)
         
+        # Add y=x line to show perfect correlation
+        max_val = data.shape[0]
+        plt.plot([0, max_val], [0, max_val], 'w--', linewidth=2, label='Perfect correlation (y=x)')
+        plt.legend(loc="best")
+        plt.ylim(0, 255)
+        plt.xlim(0, 255)
         # Save the plot as a PNG file
         save_file = Path(save_path) / f"{data_file.stem}.png"
         plt.savefig(save_file, dpi=100, bbox_inches='tight')
@@ -60,6 +66,6 @@ def plot_2d_files(folder_path, save_path):
     print(f"All plots saved to {save_path}")
 
 # Example usage
-folder_path = r"\\isis\shares\Detectors\Ben Thompson 2025-2026\Ben Thompson 2025-2025 Shared\Labs\scintillating_tiles\dual_pmt_rig_251112\by_length\105mm\2604420-losose-stud-check-LR"
-save_path = r"\\isis\shares\Detectors\Ben Thompson 2025-2026\Ben Thompson 2025-2025 Shared\Labs\scintillating_tiles\log\105mm\2dplot_test"
+folder_path = r"\\isis\shares\Detectors\Ben Thompson 2025-2026\Ben Thompson 2025-2025 Shared\Labs\scintillating_tiles\dual_pmt_rig_251112\260506_full_stave_tile_selection\210mm"
+save_path = r"\\isis\shares\Detectors\Ben Thompson 2025-2026\Ben Thompson 2025-2025 Shared\Labs\scintillating_tiles\log\260506_full_stave_tile_selection\210mm\2dplots"
 plot_2d_files(folder_path, save_path)
