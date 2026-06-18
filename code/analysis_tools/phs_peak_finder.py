@@ -275,6 +275,86 @@ def integrate_counts(x, y, lower_bound=None, upper_bound=None):
     return np.trapz(y[mask], x[mask])
 
 # ------------------------
+# Integrated counts error (Poisson, trapezoidal propagation)
+# ------------------------
+def integrate_counts_error(x, y_raw, lower_bound=None, upper_bound=None, runtime_seconds=None):
+    """
+    Estimate the statistical uncertainty on the trapezoidal integral of y over x
+    within [lower_bound, upper_bound].
+
+    Assumes Poisson statistics on the raw (un-normalised) counts, so the variance
+    on each bin is equal to its raw count value.  If the spectrum has been
+    normalised by runtime T, each normalised bin y_i = n_i / T and the variance
+    propagates as:
+
+        Var(y_i) = n_i / T^2  =>  sigma(y_i) = sqrt(n_i) / T
+
+    For the trapezoidal rule  I = sum_k  0.5*(y_k + y_{k+1}) * (x_{k+1} - x_k),
+    each y_i appears in at most two adjacent trapezoids.  The combined weight
+    w_i for bin i is:
+
+        w_i = 0.5 * (dx_{left} + dx_{right})
+
+    where dx_{left} / dx_{right} are the widths of the left / right trapezoid
+    (edge bins have only one neighbour).  By error propagation:
+
+        sigma(I) = sqrt( sum_i  w_i^2 * Var(y_i) )
+
+    Parameters
+    ----------
+    x             : array  - voltage axis (must be sorted)
+    y_raw         : array  - raw counts (before any normalisation)
+    lower_bound   : float  - lower integration limit (default: min(x))
+    upper_bound   : float  - upper integration limit (default: max(x))
+    runtime_seconds : float or None
+        If provided the uncertainty is scaled by 1/runtime_seconds to match a
+        normalised integral; pass None for raw-count integrals.
+
+    Returns
+    -------
+    float or None  - one-sigma uncertainty on the integral, or None on failure.
+    """
+    if x is None or y_raw is None or len(x) == 0:
+        return None
+
+    if lower_bound is None:
+        lower_bound = np.min(x)
+    if upper_bound is None:
+        upper_bound = np.max(x)
+    if lower_bound > upper_bound:
+        lower_bound, upper_bound = upper_bound, lower_bound
+
+    mask = (x >= lower_bound) & (x <= upper_bound)
+    if not np.any(mask):
+        return None
+
+    x_m = x[mask]
+    y_m = y_raw[mask]
+
+    n = len(x_m)
+    if n < 2:
+        return None
+
+    # Trapezoidal weights for each bin
+    dx = np.diff(x_m)                         # widths between consecutive points
+    weights = np.zeros(n)
+    weights[0]    += 0.5 * dx[0]
+    weights[-1]   += 0.5 * dx[-1]
+    weights[1:-1] += 0.5 * (dx[:-1] + dx[1:])
+
+    # Poisson variance on raw counts (clip negatives to zero)
+    variance_raw = np.maximum(y_m, 0.0)
+
+    # If normalised, scale variance by 1/T^2
+    if runtime_seconds is not None and runtime_seconds > 0:
+        variance = variance_raw / (runtime_seconds ** 2)
+    else:
+        variance = variance_raw
+
+    sigma_integral = np.sqrt(np.sum(weights ** 2 * variance))
+    return sigma_integral
+
+# ------------------------
 # Extract channel names from header
 # ------------------------
 def extract_channel_names(header_line):
@@ -481,7 +561,7 @@ def analyze_all_peaks(x, y, window=10, poly=3, prominence=0.05,
         
         # Fit polynomial around this peak only if peak_x is greater than 0.005
         if peak_x > 0.005:
-            fit_range = (x > peak_x - (x[-1] - x[0]) * 0.1) & (x < peak_x + (x[-1] - x[0]) * 0.1)
+            fit_range = (x > peak_x - (x[-1] - x[0]) * 0.075) & (x < peak_x + (x[-1] - x[0]) * 0.075)
             x_fit = x[fit_range]
             y_fit = y[fit_range]
             
@@ -620,9 +700,15 @@ def analyze_all_peaks(x, y, window=10, poly=3, prominence=0.05,
     
     # Integrated counts on normalised data (if requested)
     integrated_counts = None
+    integrated_counts_error = None
     if integration_lower is not None or integration_upper is not None:
         if normalised_used:
             integrated_counts = integrate_counts(x, y, integration_lower, integration_upper)
+            # Error uses the original raw counts plus the runtime for scaling
+            integrated_counts_error = integrate_counts_error(
+                x, y_original, integration_lower, integration_upper,
+                runtime_seconds=runtime_seconds
+            )
         else:
             print("Integration bounds set, but normalised data not available. Skipping integration.")
 
@@ -638,6 +724,8 @@ def analyze_all_peaks(x, y, window=10, poly=3, prominence=0.05,
     info_text += integration_info
     if integrated_counts is not None:
         info_text += f'\nIntegrated Counts: {integrated_counts:.3e}'
+        if integrated_counts_error is not None:
+            info_text += f' ± {integrated_counts_error:.3e}'
         info_text += f'\nIntegration Bounds: [{integration_lower}, {integration_upper}]'
     info_text += f'\nTotal Peaks Detected: {len(peaks)}' 
     if channel_name:
@@ -678,7 +766,7 @@ def analyze_all_peaks(x, y, window=10, poly=3, prominence=0.05,
     else:
         plt.close()
 
-    return all_peak_info, integrated_counts, normalised_used
+    return all_peak_info, integrated_counts, normalised_used, integrated_counts_error
 
 # ------------------------
 # Create overlay plot of all spectra
@@ -833,7 +921,7 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False, save_cs
                     'id': file_id
                 })
             # Get ALL peaks
-            all_peaks, integrated_counts, normalised_used = analyze_all_peaks(
+            all_peaks, integrated_counts, normalised_used, integrated_counts_error = analyze_all_peaks(
                 x, y,
                 show_plot=True,
                 save_plot=save_plots,
@@ -880,6 +968,7 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False, save_cs
                     "IsIntegrationEnabled": is_integration_enabled,
                     "normalised": normalised_used,
                     "Integrated_Counts": integrated_counts,
+                    "Integrated_Counts_Error": integrated_counts_error,
                     "Integration_Lower": integration_lower,
                     "Integration_Upper": integration_upper
                 }
@@ -926,7 +1015,7 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False, save_cs
                     })
                 
                 # Get ALL peaks for this channel
-                all_peaks, integrated_counts, normalised_used = analyze_all_peaks(
+                all_peaks, integrated_counts, normalised_used, integrated_counts_error = analyze_all_peaks(
                     x, y,
                     show_plot=True,
                     save_plot=save_plots,
@@ -975,6 +1064,7 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False, save_cs
                         "IsIntegrationEnabled": is_integration_enabled,
                         "normalised": normalised_used,
                         "Integrated_Counts": integrated_counts,
+                        "Integrated_Counts_Error": integrated_counts_error,
                         "Integration_Lower": integration_lower,
                         "Integration_Upper": integration_upper
                     }
@@ -1025,13 +1115,15 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False, save_cs
                             "Peak_X_Gaussian", "Peak_X_Gaussian_Err",
                             "Peak_X_Poly", "Peak_X_Poly_Err", "Peak_Y", 
                             "Num_Data_Points", "Runtime", "StartDateTime", "normalised",
-                            "Integrated_Counts", "Integration_Lower", "Integration_Upper"]
+                            "Integrated_Counts", "Integrated_Counts_Error",
+                            "Integration_Lower", "Integration_Upper"]
         else:
             display_columns = ["ID", "File", "Peak_Number", 
                             "Peak_X_Gaussian", "Peak_X_Gaussian_Err",
                             "Peak_X_Poly", "Peak_X_Poly_Err", "Peak_Y", 
                             "Num_Data_Points", "Runtime", "StartDateTime", "normalised",
-                            "Integrated_Counts", "Integration_Lower", "Integration_Upper"]
+                            "Integrated_Counts", "Integrated_Counts_Error",
+                            "Integration_Lower", "Integration_Upper"]
         
         existing_columns = [col for col in display_columns if col in df.columns]
         print(df[existing_columns].to_string(index=False))
@@ -1044,8 +1136,8 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False, save_cs
 # ------------------------
 if __name__ == "__main__":
     # Update these paths as needed
-    folder_path = r"filepath"
-    custom_save_path = r"savepath"
+    folder_path = r"\\isis\shares\Detectors\Ben Thompson 2025-2026\Ben Thompson 2025-2025 Shared\Labs\scintillating_tiles\dual_pmt_rig_251112\by_length\105mm\260610\260618_data_analysis_raw"
+    custom_save_path = r"C:\Users\fzy12567\OneDrive - University of Bristol\phys\y3\final_fml_rpt\data\105mm"
     
 # Process with multi-channel enabled and CSV saving
 process_phs_folder(
@@ -1056,8 +1148,8 @@ process_phs_folder(
     custom_save_path=custom_save_path,
     normalise=True,
     phs_overlay=True,
-    multi_channel=True,
+    multi_channel=False,
     tile_30mm=False,
     integration_lower=0.02,
-    integration_upper=0.20
+    integration_upper=0.2
 )
