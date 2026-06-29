@@ -12,6 +12,50 @@ from datetime import datetime
 import re
 warnings.filterwarnings("ignore")
 
+#=======================================================================
+# matplotlib rc — academic / journal style
+#=======================================================================
+plt.rcParams.update({
+    "font.family":       "serif",
+    "font.size":         10,
+    "axes.labelsize":    10,
+    "axes.titlesize":    10,
+    "xtick.labelsize":   9,
+    "ytick.labelsize":   9,
+    "legend.fontsize":   9,
+    "lines.linewidth":   1.0,
+    "axes.linewidth":    0.8,
+    "xtick.major.width": 0.8,
+    "ytick.major.width": 0.8,
+    "xtick.minor.width": 0.5,
+    "ytick.minor.width": 0.5,
+    "xtick.major.size":  4.0,
+    "ytick.major.size":  4.0,
+    "xtick.minor.size":  2.0,
+    "ytick.minor.size":  2.0,
+    "xtick.direction":   "in",
+    "ytick.direction":   "in",
+    "xtick.top":         True,
+    "ytick.right":       True,
+    "axes.grid":         True,
+    "grid.color":        "#CCCCCC",
+    "grid.linewidth":    0.4,
+    "grid.linestyle":    "--",
+    "grid.alpha":        0.6,
+    "axes.axisbelow":    True,
+    "figure.facecolor":  "white",
+    "axes.facecolor":    "white",
+    "savefig.dpi":       600,
+    "savefig.bbox":      "tight",
+    "savefig.facecolor": "white",
+    "figure.dpi":        150,
+    "legend.framealpha": 0.9,
+    "legend.edgecolor":  "#AAAAAA",
+    "legend.frameon":    True,
+})
+
+
+
 # ------------------------
 # second-order polynomial function
 # ------------------------
@@ -355,6 +399,27 @@ def integrate_counts_error(x, y_raw, lower_bound=None, upper_bound=None, runtime
     return sigma_integral
 
 # ------------------------
+# Tab color palette helpers
+# ------------------------
+TAB_COLORS = [
+    "tab:blue",
+    "tab:orange",
+    "tab:green",
+    "tab:red",
+    "tab:purple",
+    "tab:brown",
+    "tab:pink",
+    "tab:gray",
+    "tab:olive",
+    "tab:cyan",
+]
+
+
+def get_tab_color(index):
+    """Return a colorblind-friendly Matplotlib tab color."""
+    return TAB_COLORS[index % len(TAB_COLORS)]
+
+# ------------------------
 # Extract channel names from header
 # ------------------------
 def extract_channel_names(header_line):
@@ -546,14 +611,14 @@ def analyze_all_peaks(x, y, window=10, poly=3, prominence=0.05,
     
     # Plot original data
     if normalise and runtime_seconds:
-        plt.plot(x, y, label="normalised Spectrum", color="lightblue", alpha=0.7, linewidth=1.5)
+        plt.step(x, y, where="mid", label="Normalised Spectrum", color="tab:blue", alpha=0.9, linewidth=1.4)
     else:
-        plt.plot(x, y_original, label="Raw Spectrum", color="lightgray", alpha=0.7)
+        plt.step(x, y_original, where="mid", label="Raw Spectrum", color="tab:blue", alpha=0.9, linewidth=1.4)
     
-    plt.plot(x, y_smooth, label="Smoothed Spectrum", color="blue", linewidth=2)
+    plt.plot(x, y_smooth, label="Smoothed Spectrum", color="tab:orange", linewidth=2)
     
     
-    color = "green"
+    color = "tab:green"
     
     for idx, peak_idx in enumerate(peaks):
         peak_x = x[peak_idx]
@@ -597,15 +662,15 @@ def analyze_all_peaks(x, y, window=10, poly=3, prominence=0.05,
                     # Only plot if the maximum is within the fit range
                     if x_fit.min() <= x_max_poly <= x_fit.max():
                         y_max = polynomial_2nd_order(x_max_poly, a, b, c)
-                        plt.plot(x_max_poly, y_max, "ro", linewidth=2, 
-                                color="red", markersize=6, markeredgewidth=2, 
+                        plt.plot(x_max_poly, y_max, marker="o", linestyle="None", linewidth=2, 
+                            color="tab:red", markersize=6, markeredgewidth=2, 
                                 label=f"Polynomial Peak fit X={x_max_poly:.5f}±{x_max_poly_err:.5f}")
                         
                         # Plot Gaussian fit peak if available
                         if data_mean is not None and data_mean_err is not None:
                             y_at_data_mean = polynomial_2nd_order(data_mean, a, b, c)
-                            plt.plot(data_mean, y_at_data_mean, "s", 
-                                    color="purple", markersize=8, markeredgewidth=2,
+                            plt.plot(data_mean, y_at_data_mean, marker="s", linestyle="None", 
+                                color="tab:purple", markersize=8, markeredgewidth=2,
                                     label=f"Gaussian Fit X={data_mean:.5f}±{data_mean_err:.5f}")
                         
                         # Store peak information with both polynomial and data statistics
@@ -738,7 +803,7 @@ def analyze_all_peaks(x, y, window=10, poly=3, prominence=0.05,
     plt.ylabel(y_label, fontsize=12)
     
     title_suffix = f" - {channel_name}" if channel_name else ""
-    plt.title(f"All Peaks Detection: {file_name if file_name else 'Unknown File'}{title_suffix}", 
+    plt.title(f"Pulse Height Spectrum Peak Detection: {file_name if file_name else 'Unknown File'}{title_suffix}", 
                 fontsize=14, fontweight='bold')
     plt.legend(fontsize=9, loc='best')
     plt.grid(True, alpha=0.3)
@@ -789,12 +854,7 @@ def create_phs_overlay(spectra_data, save_path=None, normalise=True):
         ids.append(spectrum_id)
     
     unique_ids = list(dict.fromkeys(ids))
-    if len(unique_ids) <= 20:
-        cmap = cm.get_cmap("tab20", len(unique_ids))
-    else:
-        cmap = cm.get_cmap("hsv", len(unique_ids))
-    
-    id_to_color = {tile_id: cmap(i) for i, tile_id in enumerate(unique_ids)}
+    id_to_color = {tile_id: get_tab_color(i) for i, tile_id in enumerate(unique_ids)}
     
     for i, spectrum in enumerate(spectra_data):
         x = spectrum['x']
@@ -810,14 +870,14 @@ def create_phs_overlay(spectra_data, save_path=None, normalise=True):
         color = id_to_color.get(spectrum_id)
         
         label = f"{filename}" + (f" - {channel}" if channel else "")
-        plt.plot(x, y, alpha=alpha, linewidth=linewidth,
-                linestyle=linestyle, color=color, label=label)
+        plt.step(x, y, where="mid", alpha=alpha, linewidth=linewidth,
+            linestyle=linestyle, color=color, label=label)
     
     y_label = "Counts/second" if normalise else "Counts"
-    plt.xlabel("Voltage Output", fontsize=12)
+    plt.xlabel("Voltage Output [V]", fontsize=12)
     plt.ylabel(y_label, fontsize=12)
     
-    title = "PHS Spectra Overlay - "
+    title = "Pulse Height Spectra Overlay - "
     title += "Normalised by Runtime" if normalise else "Raw Counts"
     plt.title(title, fontsize=14, fontweight='bold')
     
@@ -1136,8 +1196,8 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False, save_cs
 # ------------------------
 if __name__ == "__main__":
     # Update these paths as needed
-    folder_path = r"\\isis\shares\Detectors\Ben Thompson 2025-2026\Ben Thompson 2025-2025 Shared\Labs\scintillating_tiles\dual_pmt_rig_251112\by_length\105mm\260610\260618_data_analysis_raw"
-    custom_save_path = r"C:\Users\fzy12567\OneDrive - University of Bristol\phys\y3\final_fml_rpt\data\105mm"
+    folder_path = r"C:\Users\det_mgr\OneDrive - University of Bristol\phys\y3\final_fml_rpt\data\210mm_260629\raw"
+    custom_save_path = r"C:\Users\det_mgr\OneDrive - University of Bristol\phys\y3\final_fml_rpt\data\210mm_260629\phs_finder"
     
 # Process with multi-channel enabled and CSV saving
 process_phs_folder(
