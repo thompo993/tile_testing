@@ -1196,8 +1196,8 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False, save_cs
 # ------------------------
 if __name__ == "__main__":
     # Update these paths as needed
-    folder_path = r"C:\Users\det_mgr\OneDrive - University of Bristol\phys\y3\final_fml_rpt\data\210mm_260629\raw"
-    custom_save_path = r"C:\Users\det_mgr\OneDrive - University of Bristol\phys\y3\final_fml_rpt\data\210mm_260629\phs_finder"
+    folder_path = r"C:\Users\thomp\OneDrive - University of Bristol\phys\y3\final_fml_rpt\data\30mm\raw_tot\benchmark"
+    custom_save_path = r"C:\Users\thomp\OneDrive - University of Bristol\phys\y3\final_fml_rpt\data\30mm\phs_finder\tot_bm"
     
 # Process with multi-channel enabled and CSV saving
 process_phs_folder(
@@ -1209,7 +1209,7 @@ process_phs_folder(
     normalise=True,
     phs_overlay=True,
     multi_channel=False,
-    tile_30mm=False,
+    tile_30mm=True,
     integration_lower=0.02,
     integration_upper=0.2
 )

@@ -1,7 +1,44 @@
 import numpy as np 
 import pandas as pd
 import matplotlib.pyplot as plt
-
+plt.rcParams.update({
+    "font.family":       "serif",
+    "font.size":         10,
+    "axes.labelsize":    10,
+    "axes.titlesize":    10,
+    "xtick.labelsize":   9,
+    "ytick.labelsize":   9,
+    "legend.fontsize":   9,
+    "lines.linewidth":   1.0,
+    "axes.linewidth":    0.8,
+    "xtick.major.width": 0.8,
+    "ytick.major.width": 0.8,
+    "xtick.minor.width": 0.5,
+    "ytick.minor.width": 0.5,
+    "xtick.major.size":  4.0,
+    "ytick.major.size":  4.0,
+    "xtick.minor.size":  2.0,
+    "ytick.minor.size":  2.0,
+    "xtick.direction":   "in",
+    "ytick.direction":   "in",
+    "xtick.top":         True,
+    "ytick.right":       True,
+    "axes.grid":         True,
+    "grid.color":        "#CCCCCC",
+    "grid.linewidth":    0.4,
+    "grid.linestyle":    "--",
+    "grid.alpha":        0.6,
+    "axes.axisbelow":    True,
+    "figure.facecolor":  "white",
+    "axes.facecolor":    "white",
+    "savefig.dpi":       600,
+    "savefig.bbox":      "tight",
+    "savefig.facecolor": "white",
+    "figure.dpi":        150,
+    "legend.framealpha": 0.9,
+    "legend.edgecolor":  "#AAAAAA",
+    "legend.frameon":    True,
+})
 voltage = [700, 710, 720, 730, 740, 745, 750, 755, 760, 765, 770, 775, 780, 790, 800]
 lhs_peak_vals = [0.068320437,
 0.072117205,
@@ -85,14 +122,20 @@ tot_rhs_error = (rhs_peak_vals_err**2 + experimental_error_rhs**2)**0.5
 
 
 # plt.axhline(0.3, color='gray', linestyle='--', label='Target Peak Position (0.30V)')
-plt.errorbar(voltage, lhs_peak_vals, yerr=tot_lhs_error, fmt='o-', label='LHS PMT', capsize=5)
-plt.errorbar(voltage, rhs_peak_vals, yerr=tot_rhs_error, fmt='o-', label='RHS PMT', capsize=5)
-plt.xlabel('Voltage (V)')
-plt.ylabel('Peak Position [A.U]')
-plt.title('Peak Position vs Voltage for LHS and RHS PMTs')
-plt.grid()
-plt.legend(loc="upper left")
+
+
+fig, ax = plt.subplots(figsize=(7,4))
+ax.errorbar(voltage, lhs_peak_vals, yerr=tot_lhs_error, fmt='o-', label='LHS PMT', capsize=5)
+ax.errorbar(voltage, rhs_peak_vals, yerr=tot_rhs_error, fmt='o-', label='RHS PMT', capsize=5)
+plt.xlabel('PMT Voltage [V]')
+plt.ylabel('PHS Peak Value [V]')
+plt.title('PMT Calibration Voltage Scan')
+ax.legend(loc="upper left")
+savepath = r"C:\Users\det_mgr\OneDrive - University of Bristol\phys\y3\final_fml_rpt\plots\calibration_scan_test.png"
+plt.tight_layout()
+plt.savefig(savepath, dpi = 1200)
 plt.show()
+
 
 
 # plt.axhline(0.28, color='gray', linestyle='--', label='Target Peak Position (0.28V)')
