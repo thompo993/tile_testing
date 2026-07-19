@@ -95,6 +95,9 @@ def calculate_peak_statistics(x_data, y_data):
         Mean (peak position) from Gaussian fit
     mean_error : float
         Error on the mean from the covariance matrix
+    popt : array or None
+        Full Gaussian fit parameters [amplitude, mean, sigma], returned so the
+        fitted curve itself can be plotted alongside the data
     """
     # Remove any zero or negative counts
     valid_mask = y_data > 0
@@ -102,7 +105,7 @@ def calculate_peak_statistics(x_data, y_data):
     y_valid = y_data[valid_mask]
     
     if len(x_valid) < 3:  # Need at least 3 points for Gaussian fit
-        return None, None
+        return None, None, None
     
     try:
         # Initial parameter guesses
@@ -119,11 +122,11 @@ def calculate_peak_statistics(x_data, y_data):
         mean = popt[1]
         mean_error = np.sqrt(pcov[1, 1])  # Square root of diagonal element for mean parameter
         
-        return mean, mean_error
+        return mean, mean_error, popt
         
     except (RuntimeError, ValueError) as e:
         # If Gaussian fit fails, return None
-        return None, None
+        return None, None, None
 
 # ------------------------
 # Extract ID from filename
@@ -558,6 +561,52 @@ def save_plot_data_to_csv(x, y, y_smooth, peaks, save_path, file_name, channel_n
         print(f"Error saving plot data CSV: {e}")
 
 # ------------------------
+# Select the single "best" peak from a list of peak_info dicts
+# ------------------------
+def select_best_peak(all_peak_info):
+    """
+    Select the single 'best' peak out of a list of peak_info dictionaries
+    (as produced inside analyze_all_peaks).
+
+    'Best' is defined as the peak whose Gaussian-fitted position is most
+    tightly constrained, i.e. the smallest relative uncertainty
+    |peak_x_data_mean_err / peak_x_data_mean|. This favours the peak with
+    the cleanest, most reliable fit rather than simply the tallest one.
+
+    If no peak has a usable Gaussian result (e.g. all fits failed or were
+    skipped), falls back to the peak with the largest amplitude (peak_y).
+
+    Parameters
+    ----------
+    all_peak_info : list of dict
+        Peak information dictionaries, each with at least 'peak_x_data_mean',
+        'peak_x_data_mean_err', and 'peak_y' keys.
+
+    Returns
+    -------
+    dict or None
+        The selected peak_info dictionary, or None if the input list is empty.
+    """
+    if not all_peak_info:
+        return None
+
+    gaussian_candidates = [
+        p for p in all_peak_info
+        if p.get('peak_x_data_mean') is not None
+        and p.get('peak_x_data_mean_err') is not None
+        and p['peak_x_data_mean'] != 0
+    ]
+
+    if gaussian_candidates:
+        return min(
+            gaussian_candidates,
+            key=lambda p: abs(p['peak_x_data_mean_err'] / p['peak_x_data_mean'])
+        )
+
+    # Fallback: no peak has a usable Gaussian fit, use the tallest detected peak
+    return max(all_peak_info, key=lambda p: (p.get('peak_y') if p.get('peak_y') is not None else 0))
+
+# ------------------------
 # Analyze ALL peaks in one file (UPDATED with data point statistics)
 # ------------------------
 def analyze_all_peaks(x, y, window=10, poly=3, prominence=0.05,
@@ -565,10 +614,17 @@ def analyze_all_peaks(x, y, window=10, poly=3, prominence=0.05,
                       runtime=None, start_datetime=None, integration_time=None, 
                       is_integration_enabled=None, normalise=True, channel_name=None, 
                       division=1.0, trig_1=None, trig_3=None,
-                      integration_lower=None, integration_upper=None):
+                      integration_lower=None, integration_upper=None, csv_filtered=False):
     """
     Smooths data, finds ALL peaks, fits second-order polynomial to each, and calculates statistics from data points.
-    Returns a list of all peak information.
+    Returns a list of peak information.
+
+    csv_filtered : bool, default False
+        If False (default), every detected peak is fitted, plotted, and
+        returned - i.e. the raw, unfiltered behaviour.
+        If True, only the single "best" peak (see select_best_peak) has its
+        polynomial/Gaussian fit drawn on the plot, and only that one peak is
+        returned (and therefore the only one that ends up in the summary CSV).
     """
     # Parse runtime for normalisation
     runtime_seconds = parse_runtime_to_seconds(runtime) if runtime else None
@@ -578,7 +634,7 @@ def analyze_all_peaks(x, y, window=10, poly=3, prominence=0.05,
     normalised_used = bool(normalise and runtime_seconds and runtime_seconds > 0)
     if normalised_used:
         y = y / runtime_seconds
-        y_label = "Counts/second"
+        y_label = "Normalised Counts [cps]"
         normalisation_note_runtime = f"normalised by runtime ({runtime}s)"
     else:
         y_label = "Counts"
@@ -607,7 +663,7 @@ def analyze_all_peaks(x, y, window=10, poly=3, prominence=0.05,
     all_peak_info = []
     
     # Create the plot
-    plt.figure(figsize=(12, 8))
+    plt.figure(figsize=(7, 4))
     
     # Plot original data
     if normalise and runtime_seconds:
@@ -615,7 +671,7 @@ def analyze_all_peaks(x, y, window=10, poly=3, prominence=0.05,
     else:
         plt.step(x, y_original, where="mid", label="Raw Spectrum", color="tab:blue", alpha=0.9, linewidth=1.4)
     
-    plt.plot(x, y_smooth, label="Smoothed Spectrum", color="tab:orange", linewidth=2)
+    # plt.plot(x, y_smooth, label="Smoothed Spectrum", color="tab:orange", linewidth=2)
     
     
     color = "tab:green"
@@ -631,7 +687,7 @@ def analyze_all_peaks(x, y, window=10, poly=3, prominence=0.05,
             y_fit = y[fit_range]
             
             # Calculate statistics from data points in the fitting region
-            data_mean, data_mean_err = calculate_peak_statistics(x_fit, y_fit)
+            data_mean, data_mean_err, gaussian_popt = calculate_peak_statistics(x_fit, y_fit)
             
             # Initial guess for polynomial: a (negative for downward parabola), b, c
             # For a peak, we want a negative quadratic coefficient
@@ -643,14 +699,22 @@ def analyze_all_peaks(x, y, window=10, poly=3, prominence=0.05,
                 # Calculate parameter errors (one standard deviation)
                 perr = np.sqrt(np.diag(pcov))
                 
-                # Plot polynomial fit
-                plt.plot(x_fit, polynomial_2nd_order(x_fit, *popt), "--", linewidth=2, color=color,
-                        label=f"Polynomial Fit")
-                
-                # Calculate and plot the maximum of the polynomial
+                # Calculate the maximum of the polynomial
                 # For y = a*x^2 + b*x + c, the vertex (maximum/minimum) is at x = -b/(2*a)
                 a, b, c = popt
                 a_err, b_err, c_err = perr
+                
+                # Fit-curve data needed to render this peak later (polynomial fit
+                # is always available once curve_fit succeeds, regardless of
+                # where its vertex ends up); Gaussian fields are filled in below
+                # only when that fit is usable, matching the previous behaviour.
+                plot_fields = {
+                    '_plot_x_fit': x_fit,
+                    '_plot_polynomial_popt': popt,
+                    '_plot_gaussian_popt': None,
+                    '_plot_data_mean': None,
+                    '_plot_data_mean_err': None,
+                }
                 
                 if a != 0:
                     x_max_poly = -b / (2 * a)
@@ -662,16 +726,15 @@ def analyze_all_peaks(x, y, window=10, poly=3, prominence=0.05,
                     # Only plot if the maximum is within the fit range
                     if x_fit.min() <= x_max_poly <= x_fit.max():
                         y_max = polynomial_2nd_order(x_max_poly, a, b, c)
-                        plt.plot(x_max_poly, y_max, marker="o", linestyle="None", linewidth=2, 
-                            color="tab:red", markersize=6, markeredgewidth=2, 
-                                label=f"Polynomial Peak fit X={x_max_poly:.5f}±{x_max_poly_err:.5f}")
+                        # plt.plot(x_max_poly, y_max, marker="o", linestyle="None", linewidth=2, 
+                        #     color="tab:red", markersize=6, markeredgewidth=2, 
+                        #         label=f"Polynomial Peak fit X={x_max_poly:.5f}±{x_max_poly_err:.5f}")
                         
-                        # Plot Gaussian fit peak if available
-                        if data_mean is not None and data_mean_err is not None:
-                            y_at_data_mean = polynomial_2nd_order(data_mean, a, b, c)
-                            plt.plot(data_mean, y_at_data_mean, marker="s", linestyle="None", 
-                                color="tab:purple", markersize=8, markeredgewidth=2,
-                                    label=f"Gaussian Fit X={data_mean:.5f}±{data_mean_err:.5f}")
+                        # Stash the Gaussian fit curve/peak for later rendering if available
+                        if data_mean is not None and data_mean_err is not None and gaussian_popt is not None:
+                            plot_fields['_plot_gaussian_popt'] = gaussian_popt
+                            plot_fields['_plot_data_mean'] = data_mean
+                            plot_fields['_plot_data_mean_err'] = data_mean_err
                         
                         # Store peak information with both polynomial and data statistics
                         peak_info = {
@@ -723,6 +786,7 @@ def analyze_all_peaks(x, y, window=10, poly=3, prominence=0.05,
                         'polynomial_c_err': c_err,
                         'num_data_points': len(x_fit)
                     }
+                peak_info.update(plot_fields)
                 all_peak_info.append(peak_info)
                 
             except RuntimeError:
@@ -763,6 +827,53 @@ def analyze_all_peaks(x, y, window=10, poly=3, prominence=0.05,
             }
             all_peak_info.append(peak_info)
     
+    # ------------------------
+    # Choose which peak(s) to render on the plot and report in all_peak_info.
+    # csv_filtered=False (default): every detected peak is drawn/returned, i.e.
+    #   the raw, unfiltered behaviour.
+    # csv_filtered=True: only the single "best" peak (see select_best_peak) is
+    #   drawn/returned, so it's the only one that ends up in the summary CSV.
+    # ------------------------
+    if csv_filtered:
+        best_peak = select_best_peak(all_peak_info)
+        selected_peaks = [best_peak] if best_peak is not None else []
+    else:
+        selected_peaks = all_peak_info
+
+    for peak_info in selected_peaks:
+        x_fit_plot = peak_info.get('_plot_x_fit')
+        polynomial_popt = peak_info.get('_plot_polynomial_popt')
+        gaussian_popt_plot = peak_info.get('_plot_gaussian_popt')
+        plot_data_mean = peak_info.get('_plot_data_mean')
+        plot_data_mean_err = peak_info.get('_plot_data_mean_err')
+
+        if x_fit_plot is None or polynomial_popt is None:
+            continue
+
+        # Plot polynomial fit
+        # plt.plot(x_fit_plot, polynomial_2nd_order(x_fit_plot, *polynomial_popt),
+        #         linestyle="--", linewidth=1.2, color=color, alpha=0.9, label="Polynomial Fit")
+
+        # Plot the Gaussian fit curve and its peak if available
+        if plot_data_mean is not None and plot_data_mean_err is not None and gaussian_popt_plot is not None:
+            x_gauss = np.linspace(x_fit_plot.min(), x_fit_plot.max(), 300)
+            y_gauss = gaussian(x_gauss, *gaussian_popt_plot)
+            plt.plot(x_gauss, y_gauss, linestyle="-.", linewidth=1.2,
+                color="tab:orange", alpha=0.9, label="Gaussian Fit")
+            # plt.axvspan(plot_data_mean - plot_data_mean_err, plot_data_mean + plot_data_mean_err,
+            #     color="tab:purple", alpha=0.12, zorder=0)
+            y_at_data_mean = gaussian(plot_data_mean, *gaussian_popt_plot)
+            plt.plot(plot_data_mean, y_at_data_mean, marker="o", linestyle="None",
+                color="tab:orange", markersize=6, markeredgewidth=0.8,
+                markeredgecolor="black", zorder=5,
+                label=f"Gaussian Peak: {plot_data_mean:.5f}±{plot_data_mean_err:.5f}")
+
+    # Strip the internal plotting-only fields before returning/reporting peaks
+    all_peak_info = [
+        {k: v for k, v in peak_info.items() if not k.startswith('_plot_')}
+        for peak_info in selected_peaks
+    ]
+    
     # Integrated counts on normalised data (if requested)
     integrated_counts = None
     integrated_counts_error = None
@@ -796,17 +907,23 @@ def analyze_all_peaks(x, y, window=10, poly=3, prominence=0.05,
     if channel_name:
         info_text += f'\nChannel: {channel_name}'
     
-    plt.figtext(0.76, 0.5, info_text, fontsize=10, 
-                bbox=dict(boxstyle="round,pad=0.5", facecolor="lightgray", alpha=0.8))
+    # plt.figtext(0.76, 0.5, info_text, fontsize=10, 
+    #             bbox=dict(boxstyle="round,pad=0.5", facecolor="lightgray", alpha=0.8))
     
-    plt.xlabel("Voltage Output [V]", fontsize=12)
-    plt.ylabel(y_label, fontsize=12)
+    plt.xlabel("Voltage Output [V]")
+    plt.ylabel(y_label)
     
     title_suffix = f" - {channel_name}" if channel_name else ""
-    plt.title(f"Pulse Height Spectrum Peak Detection: {file_name if file_name else 'Unknown File'}{title_suffix}", 
-                fontsize=14, fontweight='bold')
-    plt.legend(fontsize=9, loc='best')
-    plt.grid(True, alpha=0.3)
+    # plt.title(f"Pulse Height Spectrum Peak Detection & integrate Counts: {file_name if file_name else 'Unknown File'}{title_suffix}", 
+    #             fontsize=14, fontweight='bold')
+    plt.title("Pulse Height Spectrum Peak Detection and Integrated Counts")
+    plt.plot([], [], ' ', label=f"Integrated Counts: {integrated_counts:.3f}")
+
+    # Deduplicate legend entries (repeated Polynomial/Gaussian Fit labels across
+    # multiple peaks would otherwise stack up as identical rows)
+    handles, labels = plt.gca().get_legend_handles_labels()
+    by_label = dict(zip(labels, handles))
+    plt.legend(by_label.values(), by_label.keys(), loc='best')
     plt.tight_layout()
 
     # Save plot if requested
@@ -826,7 +943,7 @@ def analyze_all_peaks(x, y, window=10, poly=3, prominence=0.05,
             print(f"Error saving plot: {e}")
 
     if show_plot:
-        #plt.show()
+        # plt.show()
         pass
     else:
         plt.close()
@@ -844,7 +961,7 @@ def create_phs_overlay(spectra_data, save_path=None, normalise=True):
         print("No spectra data available for overlay plot.")
         return
     
-    plt.figure(figsize=(14, 10))
+    plt.figure(figsize=(7, 4))
     
     # Assign a consistent color per tile ID
     ids = []
@@ -873,7 +990,7 @@ def create_phs_overlay(spectra_data, save_path=None, normalise=True):
         plt.step(x, y, where="mid", alpha=alpha, linewidth=linewidth,
             linestyle=linestyle, color=color, label=label)
     
-    y_label = "Counts/second" if normalise else "Counts"
+    y_label = "Normalised Counts [cps]" if normalise else "Counts"
     plt.xlabel("Voltage Output [V]", fontsize=12)
     plt.ylabel(y_label, fontsize=12)
     
@@ -883,14 +1000,14 @@ def create_phs_overlay(spectra_data, save_path=None, normalise=True):
     
     if len(spectra_data) <= 15:
         plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=10)
-    else:
-        plt.figtext(0.02, 0.98, f"Showing {len(spectra_data)} spectra", 
-                fontsize=10, bbox=dict(boxstyle="round,pad=0.3", facecolor="lightgray", alpha=0.8),
-                verticalalignment='top')
+    # else:
+        # plt.figtext(0.02, 0.98, f"Showing {len(spectra_data)} spectra", 
+        #         fontsize=10, bbox=dict(boxstyle="round,pad=0.3", facecolor="lightgray", alpha=0.8),
+        #         verticalalignment='top')
     
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
-    
+    plt.xlim(0, 1)
     if save_path:
         os.makedirs(save_path, exist_ok=True)
         timestamp = datetime.now().strftime("%y%m%d_%H%M%S")
@@ -921,9 +1038,16 @@ def find_phs_files(folder_path):
 # ------------------------
 def process_phs_folder(folder_path, save_results=True, save_plots=False, save_csv=False,
                     custom_save_path=None, normalise=True, phs_overlay=False, multi_channel=False, tile_30mm=True,
-                    integration_lower=None, integration_upper=None):
+                    integration_lower=None, integration_upper=None, csv_filtered=False):
     """
-    Process all PHS files in a folder and extract ALL peaks.
+    Process all PHS files in a folder and extract peaks.
+
+    csv_filtered : bool, default False
+        If False (default), the summary CSV is the raw, unfiltered output:
+        every detected peak from every file (and channel) is included as its
+        own row, and every peak's fit is drawn on its plot.
+        If True, only the single "best" peak per file/channel (see
+        select_best_peak) is fitted/drawn and included in the summary CSV.
     """
     files = find_phs_files(folder_path)
     if not files:
@@ -938,6 +1062,7 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False, save_cs
     print(f"normalisation: {'ON' if normalise else 'OFF'}")
     print(f"PHS Overlay: {'ON' if phs_overlay else 'OFF'}")
     print(f"Save CSV: {'ON' if save_csv else 'OFF'}")
+    print(f"CSV Filtered (best peak only): {'ON' if csv_filtered else 'OFF'}")
     print("")
 
     save_path = custom_save_path if custom_save_path else folder_path
@@ -997,7 +1122,8 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False, save_cs
                 trig_1=trig_1, 
                 trig_3=trig_3,
                 integration_lower=integration_lower,
-                integration_upper=integration_upper
+                integration_upper=integration_upper,
+                csv_filtered=csv_filtered
             )
 
             if not all_peaks:
@@ -1092,7 +1218,8 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False, save_cs
                     trig_1=trig_1,
                     trig_3=trig_3,
                     integration_lower=integration_lower,
-                    integration_upper=integration_upper
+                    integration_upper=integration_upper,
+                    csv_filtered=csv_filtered
                 )
                 
                 if not all_peaks:
@@ -1141,12 +1268,14 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False, save_cs
         print("\nCreating PHS spectra overlay plot...")
         create_phs_overlay(spectra_data, save_path=save_path, normalise=normalise)
 
-    # Save summary CSV with ALL peaks
+    # Save summary CSV with peaks (all peaks, or just the best one per file/channel
+    # if csv_filtered is enabled)
     if save_results and results:
         timestamp = datetime.now().strftime("%y%m%d_%H%M%S")
         norm_suffix = "_normalised" if normalise else "_raw"
         multi_suffix = "_multichannel" if multi_channel else ""
-        csv_filename = f"PHS_All_Peaks_Summary_{timestamp}{norm_suffix}{multi_suffix}.csv"
+        filter_suffix = "_filtered" if csv_filtered else ""
+        csv_filename = f"PHS_All_Peaks_Summary_{timestamp}{norm_suffix}{multi_suffix}{filter_suffix}.csv"
         csv_path = os.path.join(save_path, csv_filename)
         
         try:
@@ -1196,8 +1325,8 @@ def process_phs_folder(folder_path, save_results=True, save_plots=False, save_cs
 # ------------------------
 if __name__ == "__main__":
     # Update these paths as needed
-    folder_path = r"C:\Users\thomp\OneDrive - University of Bristol\phys\y3\final_fml_rpt\data\30mm\raw_tot\benchmark"
-    custom_save_path = r"C:\Users\thomp\OneDrive - University of Bristol\phys\y3\final_fml_rpt\data\30mm\phs_finder\tot_bm"
+    folder_path = r"C:\Users\thomp\OneDrive - University of Bristol\phys\y3\final_fml_rpt\data\63mm\raw"
+    custom_save_path = r"C:\Users\thomp\OneDrive - University of Bristol\phys\y3\final_fml_rpt\data\63mm\phs_finder"
     
 # Process with multi-channel enabled and CSV saving
 process_phs_folder(
@@ -1209,7 +1338,8 @@ process_phs_folder(
     normalise=True,
     phs_overlay=True,
     multi_channel=False,
-    tile_30mm=True,
+    tile_30mm=False,
     integration_lower=0.02,
-    integration_upper=0.2
+    integration_upper=0.8,
+    csv_filtered=True
 )
