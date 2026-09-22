@@ -1,7 +1,7 @@
 import numpy as np 
 import pandas as pd
 import matplotlib.pyplot as plt
-
+# second manual gain matching for the LHS and RHS PMTs
 voltage = [700, 710, 720, 730, 740, 745, 750, 755, 760, 765, 770, 775, 780, 790, 800]
 lhs_peak_vals = [0.068320437,
 0.072117205,
