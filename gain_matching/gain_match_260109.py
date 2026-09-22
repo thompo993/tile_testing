@@ -1,7 +1,7 @@
 import numpy as np 
 import pandas as pd
 import matplotlib.pyplot as plt
-
+# manual calibration and gain matching of the tile testing rig
 
 voltage = [700, 710, 720, 730, 740, 750, 760, 770, 780, 790, 800]
 lhs_peak_vals = [0.1328125,
